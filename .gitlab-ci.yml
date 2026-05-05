@@ -8,10 +8,18 @@ variables:
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/pal"
 
 .install_bun: &install_bun
-  - command -v unzip >/dev/null 2>&1 || dnf install -y unzip || yum install -y unzip
-  - curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
-  - export BUN_INSTALL="$HOME/.bun"
-  - export PATH="$BUN_INSTALL/bin:$PATH"
+  - |
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    if ! command -v bun >/dev/null 2>&1; then
+      mkdir -p "$BUN_INSTALL/bin"
+      curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip
+      # Use python3 to unzip since unzip may not be available
+      python3 -c "import zipfile; zipfile.ZipFile('/tmp/bun.zip').extractall('/tmp/bun-extract')"
+      mv /tmp/bun-extract/bun-linux-x64/bun "$BUN_INSTALL/bin/bun"
+      chmod +x "$BUN_INSTALL/bin/bun"
+      rm -rf /tmp/bun.zip /tmp/bun-extract
+    fi
   - bun --version
   - bun install --frozen-lockfile
 
