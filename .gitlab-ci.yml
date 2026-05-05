@@ -38,10 +38,8 @@ build:
     # Generate models snapshot
     - cd packages/opencode && bun run script/generate.ts && cd ../..
 
-    # Phase 1: Bundle with SolidJS transform (outputs JS, has 5min timeout)
-    - cd packages/opencode && TARGET_OS=linux TARGET_ARCH=x64 OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts dist/ci-bundle && cd ../..
-    # Phase 2: Compile the bundle to a native binary (CLI, doesn't hang)
-    - bun build --compile --no-compile-autoload-bunfig --outfile pal-linux-x64 packages/opencode/dist/ci-bundle/src/index.js
+    # Build linux-x64 (10min timeout, process.exit forces clean exit)
+    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
 
   artifacts:

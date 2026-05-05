@@ -1,31 +1,34 @@
 #!/usr/bin/env bun
 /**
- * CI build script for PAL — bundle only (no compile).
+ * CI build script for PAL.
  *
- * Bun.build() API hangs on the CI runner after the promise resolves.
- * This script uses a hard timeout to force exit after bundling.
- * The CI pipeline then calls `bun build --compile` CLI separately.
+ * Uses Bun.build() API with compile:true and the SolidJS transform plugin.
+ * Calls process.exit(0) after build completes because the API leaves open
+ * handles that prevent the process from exiting naturally.
+ *
+ * Has a 10-minute safety timeout to detect genuine hangs.
  */
 import fs from "fs"
 import path from "path"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
-// Force exit after 5 minutes no matter what
-setTimeout(() => {
-  console.error("TIMEOUT: ci-build.ts exceeded 5 minute limit")
+// Safety timeout — if Bun.build() genuinely hangs, exit with error
+const TIMEOUT = setTimeout(() => {
+  console.error("TIMEOUT: Bun.build() did not complete within 10 minutes")
   process.exit(2)
-}, 300_000)
+}, 600_000)
 
-const outdir = process.argv[2]
+const target = process.argv[2]
+const outfile = process.argv[3]
 const version = process.env.OPENCODE_VERSION || "0.0.0"
 const channel = process.env.OPENCODE_CHANNEL || "latest"
-const targetOs = process.env.TARGET_OS || "linux"
-const targetArch = process.env.TARGET_ARCH || "x64"
 
-if (!outdir) {
-  console.error("Usage: TARGET_OS=linux TARGET_ARCH=x64 bun run ci-build.ts <outdir>")
+if (!target || !outfile) {
+  console.error("Usage: OPENCODE_VERSION=x.y.z bun run ci-build.ts <target> <outfile>")
   process.exit(1)
 }
+
+const [, targetOs] = target.match(/^bun-(\w+)-(\w+)$/) ?? []
 
 const dir = path.resolve(import.meta.dir, "..")
 const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
@@ -35,6 +38,7 @@ const workerPath = "./src/cli/cmd/tui/worker.ts"
 const bunfsRoot = targetOs === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
 const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
+// Load migrations
 const migrationDirs = (
   await fs.promises.readdir(path.join(dir, "migration"), { withFileTypes: true })
 )
@@ -56,21 +60,25 @@ const migrations = await Promise.all(
 console.log(`Loaded ${migrations.length} migrations`)
 
 const plugin = createSolidTransformPlugin()
-const resolvedOutdir = path.resolve(dir, outdir)
-fs.rmSync(resolvedOutdir, { recursive: true, force: true })
 
-console.log(`Bundling for ${targetOs}-${targetArch}...`)
+console.log(`Building ${target} -> ${outfile}`)
 const result = await Bun.build({
   conditions: ["browser"],
   plugins: [plugin],
   external: ["node-gyp"],
   format: "esm",
-  minify: false,
+  minify: true,
   sourcemap: "none",
-  target: "bun",
   splitting: true,
+  compile: {
+    autoloadBunfig: false,
+    autoloadDotenv: false,
+    autoloadTsconfig: true,
+    autoloadPackageJson: true,
+    target: target as any,
+    outfile,
+  },
   entrypoints: ["./src/index.ts", parserWorker, workerPath],
-  outdir: resolvedOutdir,
   define: {
     OPENCODE_VERSION: `'${version}'`,
     OPENCODE_CHANNEL: `'${channel}'`,
@@ -78,17 +86,16 @@ const result = await Bun.build({
     OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
     OPENCODE_WORKER_PATH: workerPath,
     OPENCODE_LIBC: targetOs === "linux" ? `'glibc'` : "",
-    "process.platform": `'${targetOs}'`,
-    "process.arch": `'${targetArch}'`,
   },
 })
 
+clearTimeout(TIMEOUT)
+
 if (!result.success) {
-  console.error("Bundle failed:")
+  console.error("Build failed:")
   for (const log of result.logs) console.error(log)
   process.exit(1)
 }
 
-const entry = result.outputs.find((o) => o.path.endsWith("index.js"))
-console.log(`Bundle: ${entry?.path}`)
+console.log(`Done: ${outfile}`)
 process.exit(0)
