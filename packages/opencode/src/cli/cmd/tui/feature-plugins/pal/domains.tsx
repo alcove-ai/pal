@@ -1,4 +1,3 @@
-/** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "@tui/context/theme"

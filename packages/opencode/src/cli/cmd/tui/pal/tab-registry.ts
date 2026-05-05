@@ -8,26 +8,19 @@ export type PalTabDefinition = {
 }
 
 const tabs = new Map<number, PalTabDefinition>()
-const listeners = new Set<() => void>()
 
-export function registerTab(def: PalTabDefinition): () => void {
+// Not reactive — tabs are registered synchronously by internal plugins
+// before the TUI's first render (during TuiPluginRuntime.init()).
+
+export function registerTab(def: PalTabDefinition): void {
   tabs.set(def.key, def)
-  listeners.forEach((fn) => fn())
-  return () => {
-    tabs.delete(def.key)
-    listeners.forEach((fn) => fn())
-  }
 }
 
 export function getTabs(): PalTabDefinition[] {
   return Array.from(tabs.values()).sort((a, b) => a.order - b.order)
 }
 
+// +1 for the hardcoded Agent tab (key=1) which is not in the registry
 export function getTabCount(): number {
   return tabs.size + 1
-}
-
-export function onTabsChanged(cb: () => void): () => void {
-  listeners.add(cb)
-  return () => listeners.delete(cb)
 }
