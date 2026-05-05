@@ -19,6 +19,7 @@ variables:
     chmod +x "$BUN_INSTALL/bin/bun"
     bun --version
     bun install --frozen-lockfile --ignore-scripts
+    bun install --os="*" --cpu="*" --ignore-scripts @opentui/core@0.2.2
 
 .set_version: &set_version
   - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
