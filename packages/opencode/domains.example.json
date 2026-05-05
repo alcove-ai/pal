@@ -1,0 +1,25 @@
+{
+  "domains": [
+    {
+      "name": "Content",
+      "jira_components": ["content"],
+      "jira_labels": ["content"],
+      "repo_globs": ["*pulp_rpm*", "*pulp_container*", "*pulp_file*"],
+      "owner": "content-team"
+    },
+    {
+      "name": "Platform",
+      "jira_components": ["platform", "services"],
+      "jira_labels": ["platform"],
+      "repo_globs": ["*pulpcore*", "*pulp-service*"],
+      "owner": "platform-team"
+    },
+    {
+      "name": "Deployment",
+      "jira_components": ["deployment"],
+      "jira_labels": ["deployment", "SRE"],
+      "repo_globs": ["*app-interface*", "*akamai*"],
+      "owner": "sre-team"
+    }
+  ]
+}
