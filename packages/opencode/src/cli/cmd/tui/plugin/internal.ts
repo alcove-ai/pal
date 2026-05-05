@@ -8,6 +8,10 @@ import SidebarFiles from "../feature-plugins/sidebar/files"
 import SidebarFooter from "../feature-plugins/sidebar/footer"
 import PluginManager from "../feature-plugins/system/plugins"
 import SessionV2Debug from "../feature-plugins/system/session-v2"
+import PalNeedsMe from "../feature-plugins/pal/needs-me"
+import PalDomains from "../feature-plugins/pal/domains"
+import PalActivity from "../feature-plugins/pal/activity"
+import PalSettings from "../feature-plugins/pal/settings"
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { Flag } from "@opencode-ai/core/flag/flag"
 
@@ -27,4 +31,8 @@ export const INTERNAL_TUI_PLUGINS: InternalTuiPlugin[] = [
   SidebarFooter,
   PluginManager,
   ...(Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM ? [SessionV2Debug] : []),
+  PalNeedsMe,
+  PalDomains,
+  PalActivity,
+  PalSettings,
 ]

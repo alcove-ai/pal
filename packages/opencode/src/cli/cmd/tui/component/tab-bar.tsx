@@ -1,25 +1,20 @@
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
-import { For } from "solid-js"
+import { createMemo, For } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { getTabs } from "@tui/pal/tab-registry"
 
-export type TabDefinition = {
-  key: number
-  label: string
-}
-
-const TABS: TabDefinition[] = [
-  { key: 1, label: "Agent" },
-  { key: 2, label: "Needs Me" },
-  { key: 3, label: "Domains" },
-  { key: 4, label: "Activity" },
-  { key: 5, label: "Settings" },
-]
+type TabDisplay = { key: number; label: string }
 
 export function TabBar(props: { activeTab: number }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
+
+  const allTabs = createMemo<TabDisplay[]>(() => {
+    const palTabs = getTabs().map((t) => ({ key: t.key, label: t.label }))
+    return [{ key: 1, label: "Agent" }, ...palTabs]
+  })
 
   const version = `PAL v${InstallationVersion}`
 
@@ -32,7 +27,7 @@ export function TabBar(props: { activeTab: number }) {
       backgroundColor={theme.backgroundPanel}
     >
       <box flexDirection="row" flexGrow={1} gap={1} paddingLeft={1}>
-        <For each={TABS}>
+        <For each={allTabs()}>
           {(tab) => {
             const isActive = () => props.activeTab === tab.key
             return (

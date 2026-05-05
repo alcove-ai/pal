@@ -45,10 +45,7 @@ import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
 import { TabBar } from "@tui/component/tab-bar"
-import { NeedsMe } from "@tui/routes/needs-me"
-import { Domains } from "@tui/routes/domains"
-import { Activity } from "@tui/routes/activity"
-import { SettingsPal } from "@tui/routes/settings-pal"
+import { getTabs, getTabCount } from "@tui/pal/tab-registry"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -308,7 +305,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     if (evt.defaultPrevented) return
     if (evt.ctrl || evt.meta || evt.shift) return
     const num = parseInt(evt.name ?? "", 10)
-    if (num >= 1 && num <= 5) {
+    if (num >= 1 && num <= getTabCount()) {
       evt.preventDefault()
       setActiveTab(num)
     }
@@ -929,18 +926,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
             </Switch>
             {plugin()}
           </Match>
-          <Match when={activeTab() === 2}>
-            <NeedsMe />
-          </Match>
-          <Match when={activeTab() === 3}>
-            <Domains />
-          </Match>
-          <Match when={activeTab() === 4}>
-            <Activity />
-          </Match>
-          <Match when={activeTab() === 5}>
-            <SettingsPal />
-          </Match>
+          {getTabs().map((tab) => (
+            <Match when={activeTab() === tab.key}>
+              {tab.render()}
+            </Match>
+          ))}
         </Switch>
       </Show>
       <TuiPluginRuntime.Slot name="app" />

@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/solid */
+import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "@tui/context/theme"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
@@ -11,80 +13,49 @@ import { Health } from "@/domain-health/health"
 import type { DomainsConfig } from "@/domain-health/config"
 import type { HealthSignals, HealthLevel } from "@/domain-health/health"
 import { TextAttributes } from "@opentui/core"
+import { registerTab } from "@tui/pal/tab-registry"
 
+const id = "internal:pal-domains"
 const MAX_EVENTS = 500
 const PAGE_SIZE = 50
 
-interface DomainRow {
-  name: string
-  owner: string
-  eventCount: number
-  health: HealthSignals
-}
-
-interface SnapshotData {
-  domains: DomainRow[]
-  uncategorized: { eventCount: number; health: HealthSignals; highUncategorized: boolean }
-  totalEvents: number
-}
+interface DomainRow { name: string; owner: string; eventCount: number; health: HealthSignals }
+interface SnapshotData { domains: DomainRow[]; uncategorized: { eventCount: number; health: HealthSignals; highUncategorized: boolean }; totalEvents: number }
 
 function loadEvents(): ActivityEvent[] {
-  try {
-    return Database.use((db) => {
-      return db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(MAX_EVENTS).all() as ActivityEvent[]
-    })
-  } catch { return [] }
+  try { return Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(MAX_EVENTS).all() as ActivityEvent[]) }
+  catch { return [] }
 }
 
 function computeSnapshot(config: DomainsConfig, events: ActivityEvent[]): SnapshotData {
   const { byDomain, uncategorized } = Classifier.classifyEvents(events, config)
-  const domains: DomainRow[] = []
-  for (const domainDef of config.domains) {
-    const domainEvents = byDomain.get(domainDef.name) ?? []
-    domains.push({ name: domainDef.name, owner: domainDef.owner, eventCount: domainEvents.length, health: Health.computeHealth(domainEvents) })
-  }
+  const domains: DomainRow[] = config.domains.map((d) => {
+    const domainEvents = byDomain.get(d.name) ?? []
+    return { name: d.name, owner: d.owner, eventCount: domainEvents.length, health: Health.computeHealth(domainEvents) }
+  })
   const uncatHealth = Health.computeHealth(uncategorized)
   const totalEvents = events.length
-  const highUncategorized = totalEvents > 0 && uncategorized.length / totalEvents > 0.2
-  return { domains, uncategorized: { eventCount: uncategorized.length, health: uncatHealth, highUncategorized }, totalEvents }
+  return { domains, uncategorized: { eventCount: uncategorized.length, health: uncatHealth, highUncategorized: totalEvents > 0 && uncategorized.length / totalEvents > 0.2 }, totalEvents }
 }
 
 function levelIndicator(_level: HealthLevel): string { return "●" }
-
 function levelColor(level: HealthLevel, theme: any): string {
-  switch (level) {
-    case "green": return theme.success ?? "#22c55e"
-    case "yellow": return theme.warning ?? "#eab308"
-    case "red": return theme.error ?? "#ef4444"
-  }
+  switch (level) { case "green": return theme.success ?? "#22c55e"; case "yellow": return theme.warning ?? "#eab308"; case "red": return theme.error ?? "#ef4444" }
 }
-
 function formatSignalValue(label: string, value: number): string {
-  switch (label) {
-    case "Flow": return value.toFixed(1)
-    case "Stale": return `${value.toFixed(0)}d`
-    case "Block": return `${value}`
-    case "Trend": return value > 0 ? `+${value}%` : `${value}%`
-    default: return `${value}`
-  }
+  switch (label) { case "Flow": return value.toFixed(1); case "Stale": return `${value.toFixed(0)}d`; case "Block": return `${value}`; case "Trend": return value > 0 ? `+${value}%` : `${value}%`; default: return `${value}` }
 }
-
 function sourceIcon(source: ActivitySource): string {
   switch (source) { case "jira": return "J"; case "github": return "G"; case "gitlab": return "L"; default: return "?" }
 }
-
 function formatTimestamp(ts: number): string {
-  const now = Date.now()
-  const diff = now - ts
-  if (diff < 60_000) return "just now"
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
-  const date = new Date(ts)
-  return `${date.getMonth() + 1}/${date.getDate()}`
+  const now = Date.now(); const diff = now - ts
+  if (diff < 60_000) return "just now"; if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`; if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
+  const date = new Date(ts); return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
-export function Domains() {
+function DomainsView() {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const [config, setConfig] = createSignal<DomainsConfig>(DomainConfig.get())
@@ -96,7 +67,7 @@ export function Domains() {
   function refresh() {
     const cfg = DomainConfig.get(); setConfig(cfg)
     const evts = loadEvents(); setEvents(evts)
-    if (cfg.domains.length > 0) { setSnapshot(computeSnapshot(cfg, evts)) } else { setSnapshot(null) }
+    if (cfg.domains.length > 0) setSnapshot(computeSnapshot(cfg, evts)); else setSnapshot(null)
   }
 
   function drillInto(domainName: string) {
@@ -105,11 +76,10 @@ export function Domains() {
     if (domainName === "__uncategorized__") { setDrillDomain("Uncategorized"); setDrillEvents(uncategorized) }
     else { setDrillDomain(domainName); setDrillEvents(byDomain.get(domainName) ?? []) }
   }
-
   void drillInto
 
-  const unsubscribe = DomainConfig.onChange(() => { refresh() })
-  onMount(() => { refresh() })
+  const unsubscribe = DomainConfig.onChange(() => refresh())
+  onMount(() => refresh())
   let refreshTimer: ReturnType<typeof setInterval> | undefined
   onMount(() => { refreshTimer = setInterval(refresh, 30_000) })
   onCleanup(() => { if (refreshTimer) clearInterval(refreshTimer); unsubscribe() })
@@ -226,3 +196,10 @@ export function Domains() {
     )
   }
 }
+
+const tui: TuiPlugin = async () => {
+  registerTab({ key: 3, label: "Domains", order: 300, render: () => <DomainsView /> })
+}
+
+const plugin: TuiPluginModule & { id: string } = { id, tui }
+export default plugin
