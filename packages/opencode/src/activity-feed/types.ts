@@ -1,6 +1,7 @@
 export type ActivitySource = "jira" | "github" | "gitlab"
 
 export type ActivityEventType =
+  // Jira event types
   | "issue_created"
   | "status_changed"
   | "assigned"
@@ -8,6 +9,22 @@ export type ActivityEventType =
   | "priority_changed"
   | "blocked"
   | "field_updated"
+  // GitHub event types
+  | "pr_opened"
+  | "pr_merged"
+  | "pr_closed"
+  | "review_requested"
+  | "review_submitted"
+  | "pr_commented"
+  | "issue_opened"
+  | "issue_commented"
+  | "mentioned"
+  | "ci_failed"
+  // GitLab event types
+  | "mr_opened"
+  | "mr_merged"
+  | "mr_commented"
+  | "pipeline_failed"
 
 export interface ActivityEvent {
   id: string

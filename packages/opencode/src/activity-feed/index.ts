@@ -4,6 +4,8 @@ import { ActivityEventTable, PollStateTable } from "./activity-feed.sql"
 import { desc, eq, and, lt, sql } from "drizzle-orm"
 import type { PollingAdapter, ActivityEvent, ActivitySource, PollState } from "./types"
 import { createJiraAdapter } from "./jira-adapter"
+import { createGitHubAdapter } from "./github-adapter"
+import { createGitLabAdapter } from "./gitlab-adapter"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Effect, Layer, Context, Schema, Stream } from "effect"
@@ -76,8 +78,10 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
       }
     }
 
-    // Register Jira adapter
+    // Register adapters (each independently checks isAvailable before polling)
     adapters.push(createJiraAdapter(getMcpTools))
+    adapters.push(createGitHubAdapter())
+    adapters.push(createGitLabAdapter(getMcpTools))
 
     // --- Database helpers ---
 
