@@ -1,5 +1,32 @@
 # AGENTS.md -- PAL canonical project context
 
+## Why PAL exists
+
+### The coordination problem
+
+Our team adopted agentic SDLC — AI agents handle implementation, humans handle direction. Implementation is no longer the bottleneck. **Coordination is.** When anyone can build anything almost instantly, the hard problems become: deciding *what* to build, staying coherent across concurrent work, and getting the right context to the right person at the right moment.
+
+Industry research confirms this is widespread: PR review times increased 91% even as task completion rose 21%. The bottleneck isn't engineering capacity — it's imagination and coordination.
+
+### What we observed
+
+**Example 1 — Proposal ping-pong.** Two developers each had their AI agent propose and revise features. The workflow was: Developer A instructs Agent A → Agent A writes proposal → Developer A reads it → Developer B reads it → Developer B instructs Agent B to respond → repeat. Four human-attention bottlenecks per cycle. Eight issues discussed simultaneously with no shared goals. Solutions proposed before problems were agreed on.
+
+**Example 2 — Cross-developer problem solving.** One developer had a nondeterminism problem with an agent they were designing. They described it verbally to a colleague. The colleague worked with their AI agent to produce a spec (GitHub issue), then manually asked the first developer to have their agent review it. The verbal context was lost. The agents never talked to each other. Humans routed every piece of information.
+
+**The pattern.** In both cases, humans were acting as message routers between agents. This is the scaling wall — humans become the bottleneck not because they're slow at deciding, but because they're the only nodes through which information flows.
+
+### Core design principles
+
+1. **Problem-first, then solutions** — when implementation is nearly free, the most expensive thing you can do is build the wrong thing. PAL enforces problem definition before solution proposals.
+2. **Agents as participants, not just executors** — agents contribute observations, problems, and goals to the shared pool of knowledge, not just execute instructions.
+3. **Issues as the shared workspace** — Jira and GitHub issues are the coordination protocol. No new communication layer needed.
+4. **Right context, right moment** — not everyone knowing everything, but the right information available to whoever needs it when they need it.
+
+### Full design document
+
+See `~/devel/pulp/human-agent-team-coordination.md` for the complete problem analysis including research references (HBR, METR studies, Apache lazy consensus, stigmergy in software development, coordination cost theory).
+
 ## Project objective
 
 PAL (Personal Agent Liaison) is a TUI dashboard for human-agent team coordination.
