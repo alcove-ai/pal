@@ -8,6 +8,7 @@ variables:
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/pal"
 
 .install_bun: &install_bun
+  - command -v unzip >/dev/null 2>&1 || yum install -y unzip >/dev/null 2>&1
   - curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
   - export BUN_INSTALL="$HOME/.bun"
   - export PATH="$BUN_INSTALL/bin:$PATH"
@@ -79,7 +80,6 @@ release:
   needs:
     - job: build
       artifacts: true
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
   script:
     - VERSION=$(cat version.txt)
     - echo "Releasing PAL v${VERSION}"
@@ -92,15 +92,24 @@ release:
         echo "Tag v${VERSION} already exists, skipping release"
         exit 0
       fi
+    # Create release via API (avoids needing release-cli image)
     - |
-      release-cli create \
-        --name "PAL v${VERSION}" \
-        --tag-name "v${VERSION}" \
-        --description "PAL v${VERSION} release" \
-        --assets-link "{\"name\":\"pal-linux-x64\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64\",\"filepath\":\"/pal-linux-x64\"}" \
-        --assets-link "{\"name\":\"pal-linux-x64.sha256\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64.sha256\",\"filepath\":\"/pal-linux-x64.sha256\"}" \
-        --assets-link "{\"name\":\"pal-linux-arm64\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64\",\"filepath\":\"/pal-linux-arm64\"}" \
-        --assets-link "{\"name\":\"pal-linux-arm64.sha256\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64.sha256\",\"filepath\":\"/pal-linux-arm64.sha256\"}" \
-        --assets-link "{\"name\":\"pal-darwin-arm64\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64\",\"filepath\":\"/pal-darwin-arm64\"}" \
-        --assets-link "{\"name\":\"pal-darwin-arm64.sha256\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64.sha256\",\"filepath\":\"/pal-darwin-arm64.sha256\"}" \
-        --assets-link "{\"name\":\"version.txt\",\"url\":\"${PACKAGE_REGISTRY_URL}/${VERSION}/version.txt\",\"filepath\":\"/version.txt\"}"
+      curl --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --header "Content-Type: application/json" \
+        --data "{
+          \"name\": \"PAL v${VERSION}\",
+          \"tag_name\": \"v${VERSION}\",
+          \"description\": \"PAL v${VERSION} release\",
+          \"assets\": {
+            \"links\": [
+              {\"name\": \"pal-linux-x64\",       \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64\",       \"filepath\": \"/pal-linux-x64\"},
+              {\"name\": \"pal-linux-x64.sha256\", \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64.sha256\", \"filepath\": \"/pal-linux-x64.sha256\"},
+              {\"name\": \"pal-linux-arm64\",       \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64\",       \"filepath\": \"/pal-linux-arm64\"},
+              {\"name\": \"pal-linux-arm64.sha256\", \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64.sha256\", \"filepath\": \"/pal-linux-arm64.sha256\"},
+              {\"name\": \"pal-darwin-arm64\",       \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64\",       \"filepath\": \"/pal-darwin-arm64\"},
+              {\"name\": \"pal-darwin-arm64.sha256\", \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64.sha256\", \"filepath\": \"/pal-darwin-arm64.sha256\"},
+              {\"name\": \"version.txt\",            \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/version.txt\",            \"filepath\": \"/version.txt\"}
+            ]
+          }
+        }" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"
