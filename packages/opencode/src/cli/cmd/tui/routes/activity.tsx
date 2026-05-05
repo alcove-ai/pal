@@ -6,6 +6,7 @@ import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
 import { desc, eq } from "drizzle-orm"
 import type { ActivityEvent, ActivitySource, ActivityEventType } from "@/activity-feed/types"
 import { TextAttributes } from "@opentui/core"
+import type { RelevanceLevel } from "@/upstream-relevance/types"
 
 const PAGE_SIZE = 50
 
@@ -62,6 +63,40 @@ function eventTypeColor(eventType: ActivityEventType, theme: any): string {
     default:
       return theme.textMuted
   }
+}
+
+function relevanceBadge(level: RelevanceLevel | null | undefined): string {
+  switch (level) {
+    case "must-act":
+      return "!!!"
+    case "review":
+      return " ! "
+    case "watch":
+      return " ~ "
+    case "noise":
+      return " . "
+    default:
+      return "   "
+  }
+}
+
+function relevanceColor(level: RelevanceLevel | null | undefined, theme: any): string {
+  switch (level) {
+    case "must-act":
+      return theme.error ?? "#ff0000"
+    case "review":
+      return theme.warning ?? "#ffaa00"
+    case "watch":
+      return theme.info ?? theme.primary
+    case "noise":
+      return theme.textMuted
+    default:
+      return theme.textMuted
+  }
+}
+
+function isUpstreamSource(source: string): boolean {
+  return source === "github" || source === "gitlab"
 }
 
 function formatTimestamp(ts: number): string {
@@ -148,6 +183,11 @@ export function Activity() {
             Type
           </text>
         </box>
+        <box width={5} flexShrink={0}>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+            Rel
+          </text>
+        </box>
         <box flexGrow={1}>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
             Title / Summary
@@ -175,7 +215,10 @@ export function Activity() {
               const isUnread = () => event.is_read === 0
               const fg = () => (isUnread() ? theme.text : theme.textMuted)
               const badgeColor = () => eventTypeColor(event.event_type as ActivityEventType, theme)
-              const maxTitleWidth = () => Math.max(dimensions().width - 35, 10)
+              const relLevel = () => event.relevance as RelevanceLevel | null
+              const relColor = () => relevanceColor(relLevel(), theme)
+              const showRelevance = () => isUpstreamSource(event.source)
+              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
 
               return (
                 <box height={1} flexDirection="row" paddingLeft={1}>
@@ -189,6 +232,13 @@ export function Activity() {
                   </box>
                   <box width={5} flexShrink={0}>
                     <text fg={badgeColor()}>{eventTypeBadge(event.event_type as ActivityEventType)}</text>
+                  </box>
+                  <box width={5} flexShrink={0}>
+                    <Show when={showRelevance()}>
+                      <text fg={relColor()} attributes={relLevel() === "must-act" ? TextAttributes.BOLD : 0}>
+                        {relevanceBadge(relLevel())}
+                      </text>
+                    </Show>
                   </box>
                   <box flexGrow={1}>
                     <text fg={fg()}>

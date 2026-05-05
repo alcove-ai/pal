@@ -14,6 +14,8 @@ export const ActivityEventTable = sqliteTable(
     url: text(),
     metadata: text({ mode: "json" }),
     is_read: integer().notNull().default(0),
+    relevance: text(),
+    relevance_reasoning: text(),
     created_at: integer()
       .notNull()
       .$default(() => Date.now()),
@@ -22,6 +24,7 @@ export const ActivityEventTable = sqliteTable(
     uniqueIndex("activity_event_dedup_idx").on(table.source, table.source_id, table.event_type, table.timestamp),
     index("activity_event_timestamp_idx").on(table.timestamp),
     index("activity_event_is_read_timestamp_idx").on(table.is_read, table.timestamp),
+    index("activity_event_relevance_idx").on(table.relevance, table.timestamp),
   ],
 )
 

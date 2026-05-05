@@ -191,6 +191,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
             url: issueUrl(issue.key),
             metadata: baseMetadata,
             is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
             created_at: Date.now(),
           })
 
@@ -217,6 +219,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                   url: issueUrl(issue.key),
                   metadata: { ...baseMetadata, blocked: true },
                   is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
                   created_at: Date.now(),
                 })
                 continue
@@ -241,6 +245,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                     change_to: item.toString,
                   },
                   is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
                   created_at: Date.now(),
                 })
               } else if (field !== "description" && field !== "labels") {
@@ -262,6 +268,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                     change_to: item.toString,
                   },
                   is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
                   created_at: Date.now(),
                 })
               }
@@ -283,6 +291,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
               url: issueUrl(issue.key),
               metadata: { ...baseMetadata, comment_id: comment.id },
               is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
               created_at: Date.now(),
             })
           }

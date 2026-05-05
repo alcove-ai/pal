@@ -297,6 +297,8 @@ async function pollNotifications(
         ...(jiraKeys.length > 0 ? { jira_keys: jiraKeys } : {}),
       },
       is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
       created_at: Date.now(),
     })
   }
@@ -339,6 +341,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           url: pr.html_url,
           metadata: baseMetadata,
           is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
           created_at: Date.now(),
         })
       } else if (pr.state === "closed") {
@@ -354,6 +358,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           url: pr.html_url,
           metadata: baseMetadata,
           is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
           created_at: Date.now(),
         })
       } else {
@@ -370,6 +376,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           url: pr.html_url,
           metadata: baseMetadata,
           is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
           created_at: Date.now(),
         })
 
@@ -388,6 +396,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
               url: pr.html_url,
               metadata: { ...baseMetadata, reviewer: reviewer.login },
               is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
               created_at: Date.now(),
             })
           }
@@ -418,6 +428,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
                 review_id: review.id,
               },
               is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
               created_at: Date.now(),
             })
           }
@@ -448,6 +460,8 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
                 failed_checks: failedRuns.map((r) => ({ name: r.name, id: r.id })),
               },
               is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
               created_at: Date.now(),
             })
           }
@@ -493,6 +507,8 @@ async function pollUpstreamReviewRequests(org: string, bots: Set<string>): Promi
         ...(jiraKeys.length > 0 ? { jira_keys: jiraKeys } : {}),
       },
       is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
       created_at: Date.now(),
     })
   }

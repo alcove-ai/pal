@@ -12,6 +12,7 @@ import { Effect, Layer, Context, Schema, Stream } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { MCP } from "@/mcp"
 import { EffectBridge } from "@/effect/bridge"
+import { UpstreamRelevance } from "@/upstream-relevance"
 
 const log = Log.create({ service: "activity-feed" })
 
@@ -241,6 +242,15 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
           : events.filter((e) => e.timestamp >= now - FIRST_RUN_LOOKBACK_MS)
 
         const inserted = insertEvents(filteredEvents)
+
+        // Classify upstream events for relevance (non-blocking)
+        if (inserted > 0) {
+          try {
+            await UpstreamRelevance.classifyBatch(filteredEvents)
+          } catch (err) {
+            log.debug("relevance classification failed", { error: err })
+          }
+        }
 
         const consecutiveFailures = state?.consecutive_failures ?? 0
         const newFailures =

@@ -38,6 +38,8 @@ export interface ActivityEvent {
   url: string | null
   metadata: Record<string, unknown> | null
   is_read: number
+  relevance: string | null
+  relevance_reasoning: string | null
   created_at: number
 }
 

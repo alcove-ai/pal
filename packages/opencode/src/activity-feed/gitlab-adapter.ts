@@ -248,6 +248,8 @@ async function pollRepo(
         url: mr.web_url,
         metadata: baseMetadata,
         is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
         created_at: Date.now(),
       })
     } else if (mr.state === "opened") {
@@ -263,6 +265,8 @@ async function pollRepo(
         url: mr.web_url,
         metadata: baseMetadata,
         is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
         created_at: Date.now(),
       })
 
@@ -307,6 +311,8 @@ async function pollRepo(
                   : {}),
               },
               is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
               created_at: Date.now(),
             })
           }
@@ -360,6 +366,8 @@ async function pollRepo(
                   note_id: note.id,
                 },
                 is_read: 0,
+              relevance: null,
+              relevance_reasoning: null,
                 created_at: Date.now(),
               })
             }

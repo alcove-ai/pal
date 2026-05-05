@@ -1,0 +1,76 @@
+# Upstream Relevance Configuration
+# Controls how upstream open-source activity events are classified for relevance.
+# Four levels: must-act, review, watch, noise
+
+must-act:
+  labels:
+    - security
+    - CVE
+    - cve
+    - breaking
+    - breaking-change
+    - critical
+    - vulnerability
+  keywords:
+    - "CVE-"
+    - "security fix"
+    - "breaking change"
+    - "data loss"
+    - "privilege escalation"
+  paths:
+
+review:
+  labels:
+    - bug
+    - bugfix
+    - regression
+    - performance
+  keywords:
+    - "fix:"
+    - "bugfix:"
+    - "regression"
+    - "performance degradation"
+  paths:
+    - "pulpcore/app/"
+    - "pulpcore/content/"
+    - "pulp_rpm/"
+    - "pulp_file/"
+
+watch:
+  labels:
+    - enhancement
+    - feature
+    - refactor
+  keywords:
+    - "feat:"
+    - "refactor:"
+    - "deprecate"
+  paths:
+    - "docs/"
+    - "CHANGES/"
+
+noise:
+  labels:
+    - chore
+    - ci
+    - test
+    - typo
+    - cosmetic
+  keywords:
+    - "chore:"
+    - "ci:"
+    - "test:"
+    - "typo"
+    - "bump version"
+    - "update changelog"
+  paths:
+    - ".github/"
+    - ".ci/"
+    - "towncrier/"
+    - "MANIFEST.in"
+
+layer2:
+  maxCallsPerPoll: 20
+  dailySoftCap: 200
+  circuitBreakerThreshold: 3
+  model: claude-sonnet-4-5-20250514
