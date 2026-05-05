@@ -44,6 +44,11 @@ import { KeybindProvider, useKeybind } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
+import { TabBar } from "@tui/component/tab-bar"
+import { NeedsMe } from "@tui/routes/needs-me"
+import { Domains } from "@tui/routes/domains"
+import { Activity } from "@tui/routes/activity"
+import { SettingsPal } from "@tui/routes/settings-pal"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -225,6 +230,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const sync = useSync()
   const exit = useExit()
   const promptRef = usePromptRef()
+  const [activeTab, setActiveTab] = createSignal(1)
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
   const routeView = (name: string) => {
@@ -295,6 +301,19 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   })
 
+  // Tab switching: number keys 1-5 switch tabs when no dialog is open and keybinds are not suspended
+  useKeyboard((evt) => {
+    if (dialog.stack.length > 0) return
+    if (command.suspended()) return
+    if (evt.defaultPrevented) return
+    if (evt.ctrl || evt.meta || evt.shift) return
+    const num = parseInt(evt.name ?? "", 10)
+    if (num >= 1 && num <= 5) {
+      evt.preventDefault()
+      setActiveTab(num)
+    }
+  })
+
   // Wire up console copy-to-clipboard via opentui's onCopySelection callback
   renderer.console.onCopySelection = async (text: string) => {
     if (!text || text.length === 0) return
@@ -315,24 +334,24 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle("PAL")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || SessionApi.isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle("PAL")
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`OC | ${title}`)
+      renderer.setTerminalTitle(`PAL | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`PAL | ${route.data.id}`)
     }
   })
 
@@ -864,7 +883,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to OpenCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to PAL v${result.data.version}. Please restart the application.`,
     )
 
     void exit()
@@ -896,17 +915,34 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       <Show when={Flag.OPENCODE_SHOW_TTFD}>
         <TimeToFirstDraw />
       </Show>
+      <TabBar activeTab={activeTab()} />
       <Show when={ready()}>
         <Switch>
-          <Match when={route.data.type === "home"}>
-            <Home />
+          <Match when={activeTab() === 1}>
+            <Switch>
+              <Match when={route.data.type === "home"}>
+                <Home />
+              </Match>
+              <Match when={route.data.type === "session"}>
+                <Session />
+              </Match>
+            </Switch>
+            {plugin()}
           </Match>
-          <Match when={route.data.type === "session"}>
-            <Session />
+          <Match when={activeTab() === 2}>
+            <NeedsMe />
+          </Match>
+          <Match when={activeTab() === 3}>
+            <Domains />
+          </Match>
+          <Match when={activeTab() === 4}>
+            <Activity />
+          </Match>
+          <Match when={activeTab() === 5}>
+            <SettingsPal />
           </Match>
         </Switch>
       </Show>
-      {plugin()}
       <TuiPluginRuntime.Slot name="app" />
       <StartupLoading ready={ready} />
     </box>
