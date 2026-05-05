@@ -6,89 +6,48 @@ variables:
   BUN_VERSION: "1.3.13"
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/pal"
 
-.setup_bun: &setup_bun
-  - |
-    if [ ! -w "${HOME}" ] || [ "${HOME}" = "/" ]; then export HOME="/tmp/ci-home"; fi
-    mkdir -p "$HOME"
-    export BUN_INSTALL="$HOME/.bun"
-    export PATH="$BUN_INSTALL/bin:$PATH"
-    mkdir -p "$BUN_INSTALL/bin"
-    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip
-    python3 -c "import zipfile; zipfile.ZipFile('/tmp/bun.zip').extractall('/tmp/bun-extract')"
-    mv /tmp/bun-extract/bun-linux-x64/bun "$BUN_INSTALL/bin/bun"
-    chmod +x "$BUN_INSTALL/bin/bun"
-    bun --version
-    bun install --frozen-lockfile --ignore-scripts
-    bun install --os="*" --cpu="*" --ignore-scripts @opentui/core@0.2.2
-
-.set_version: &set_version
-  - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-  - VERSION=$(bun -e "console.log(require('./packages/opencode/package.json').version)")
-  - echo "PAL v${VERSION}"
-
-.generate_snapshot: &generate_snapshot
-  - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-  - cd packages/opencode && bun run script/generate.ts && cd ../..
-
-build-linux-x64:
+build:
   stage: build
   tags: [itup-alm-x86]
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
-    - *setup_bun
-    - *set_version
-    - *generate_snapshot
+    # Install bun
+    - |
+      if [ ! -w "${HOME}" ] || [ "${HOME}" = "/" ]; then export HOME="/tmp/ci-home"; fi
+      mkdir -p "$HOME"
+      export BUN_INSTALL="$HOME/.bun"
+      export PATH="$BUN_INSTALL/bin:$PATH"
+      mkdir -p "$BUN_INSTALL/bin"
+      curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip
+      python3 -c "import zipfile; zipfile.ZipFile('/tmp/bun.zip').extractall('/tmp/bun-extract')"
+      mv /tmp/bun-extract/bun-linux-x64/bun "$BUN_INSTALL/bin/bun"
+      chmod +x "$BUN_INSTALL/bin/bun"
+      bun --version
+      bun install --frozen-lockfile --ignore-scripts
+
     - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
+    - VERSION=$(bun -e "console.log(require('./packages/opencode/package.json').version)")
+    - echo "Building PAL v${VERSION}"
+    - echo "${VERSION}" > version.txt
+
+    # Generate models snapshot
+    - cd packages/opencode && bun run script/generate.ts && cd ../..
+
+    # Build native linux-x64 binary (single target, no cross-compile download)
     - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
-    - echo "${VERSION}" > version.txt
+
+    # Upload to Package Registry
     - |
       for file in pal-linux-x64 pal-linux-x64.sha256 version.txt; do
         curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
              --upload-file "${file}" \
              "${PACKAGE_REGISTRY_URL}/${VERSION}/${file}"
       done
+
   artifacts:
     paths: [version.txt]
-
-build-linux-arm64:
-  stage: build
-  tags: [itup-alm-x86]
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  script:
-    - *setup_bun
-    - *set_version
-    - *generate_snapshot
-    - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-arm64 ../../pal-linux-arm64 && cd ../..
-    - sha256sum pal-linux-arm64 | awk '{print $1}' > pal-linux-arm64.sha256
-    - |
-      for file in pal-linux-arm64 pal-linux-arm64.sha256; do
-        curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-             --upload-file "${file}" \
-             "${PACKAGE_REGISTRY_URL}/${VERSION}/${file}"
-      done
-
-build-darwin-arm64:
-  stage: build
-  tags: [itup-alm-x86]
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  script:
-    - *setup_bun
-    - *set_version
-    - *generate_snapshot
-    - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-darwin-arm64 ../../pal-darwin-arm64 && cd ../..
-    - sha256sum pal-darwin-arm64 | awk '{print $1}' > pal-darwin-arm64.sha256
-    - |
-      for file in pal-darwin-arm64 pal-darwin-arm64.sha256; do
-        curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-             --upload-file "${file}" \
-             "${PACKAGE_REGISTRY_URL}/${VERSION}/${file}"
-      done
 
 release:
   stage: release
@@ -96,10 +55,8 @@ release:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   needs:
-    - job: build-linux-x64
+    - job: build
       artifacts: true
-    - job: build-linux-arm64
-    - job: build-darwin-arm64
   script:
     - VERSION=$(cat version.txt)
     - echo "Releasing PAL v${VERSION}"
@@ -122,11 +79,7 @@ release:
             \"links\": [
               {\"name\": \"pal-linux-x64\",        \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64\",        \"filepath\": \"/pal-linux-x64\"},
               {\"name\": \"pal-linux-x64.sha256\",  \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64.sha256\",  \"filepath\": \"/pal-linux-x64.sha256\"},
-              {\"name\": \"pal-linux-arm64\",        \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64\",        \"filepath\": \"/pal-linux-arm64\"},
-              {\"name\": \"pal-linux-arm64.sha256\",  \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-arm64.sha256\",  \"filepath\": \"/pal-linux-arm64.sha256\"},
-              {\"name\": \"pal-darwin-arm64\",        \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64\",        \"filepath\": \"/pal-darwin-arm64\"},
-              {\"name\": \"pal-darwin-arm64.sha256\",  \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-darwin-arm64.sha256\",  \"filepath\": \"/pal-darwin-arm64.sha256\"},
-              {\"name\": \"version.txt\",             \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/version.txt\",             \"filepath\": \"/version.txt\"}
+              {\"name\": \"version.txt\",            \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/version.txt\",            \"filepath\": \"/version.txt\"}
             ]
           }
         }" \
