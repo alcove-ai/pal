@@ -24,8 +24,8 @@ const log = Log.create({ service: "pal-update" })
 
 const GITLAB_BASE = "https://gitlab.cee.redhat.com/hosted-pulp/pal"
 const VERSION_URL = `${GITLAB_BASE}/-/releases/permalink/latest/downloads/version.txt`
-const CONNECT_TIMEOUT_MS = 500
-const TOTAL_TIMEOUT_MS = 3000
+const METADATA_TIMEOUT_MS = 5_000
+const BINARY_TIMEOUT_MS = 120_000
 
 function getPlatformAssetName(): string | null {
   const platform = os.platform()
@@ -82,7 +82,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 
 async function fetchText(url: string): Promise<string | null> {
   try {
-    const resp = await fetchWithTimeout(url, TOTAL_TIMEOUT_MS)
+    const resp = await fetchWithTimeout(url, METADATA_TIMEOUT_MS)
     if (!resp.ok) {
       log.debug("fetch failed", { url, status: resp.status })
       return null
@@ -96,7 +96,7 @@ async function fetchText(url: string): Promise<string | null> {
 
 async function fetchBinary(url: string): Promise<Buffer | null> {
   try {
-    const resp = await fetchWithTimeout(url, TOTAL_TIMEOUT_MS)
+    const resp = await fetchWithTimeout(url, BINARY_TIMEOUT_MS)
     if (!resp.ok) {
       log.debug("binary fetch failed", { url, status: resp.status })
       return null
