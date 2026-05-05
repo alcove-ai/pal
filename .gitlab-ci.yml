@@ -24,7 +24,6 @@ variables:
       rm -rf /tmp/bun.zip /tmp/bun-extract
     fi
     bun --version
-    bun install --frozen-lockfile
 
 typecheck:
   stage: typecheck
@@ -35,6 +34,7 @@ typecheck:
     - if: $CI_MERGE_REQUEST_IID
   script:
     - *install_bun
+    - bun install --frozen-lockfile --ignore-scripts
     - export PATH="$HOME/.bun/bin:${HOME:-/tmp/ci-home}/.bun/bin:$PATH" && bun turbo typecheck
 
 build:
@@ -45,6 +45,7 @@ build:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
     - *install_bun
+    - bun install --frozen-lockfile --ignore-scripts
     - export PATH="$HOME/.bun/bin:${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
 
     # Read version from package.json
