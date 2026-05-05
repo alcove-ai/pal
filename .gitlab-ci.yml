@@ -9,7 +9,9 @@ variables:
 
 .install_bun: &install_bun
   - |
-    export HOME="${HOME:-/tmp/ci-home}"
+    if [ ! -w "${HOME}" ] || [ "${HOME}" = "/" ]; then
+      export HOME="/tmp/ci-home"
+    fi
     mkdir -p "$HOME"
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
