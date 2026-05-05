@@ -4,3 +4,4 @@ export { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } fro
 export { SessionShareTable } from "../share/share.sql"
 export { WorkspaceTable } from "../control-plane/workspace.sql"
 export { ActivityEventTable, PollStateTable } from "../activity-feed/activity-feed.sql"
+export { DismissedEventTable, SuppressionPatternTable } from "../needs-me/needs-me.sql"
