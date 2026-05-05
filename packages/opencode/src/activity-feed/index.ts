@@ -2,7 +2,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import { Database } from "@/storage/db"
 import { ActivityEventTable, PollStateTable } from "./activity-feed.sql"
 import { desc, eq, and, lt, sql } from "drizzle-orm"
-import type { PollingAdapter, ActivityEvent, ActivitySource, PollState } from "./types"
+import type { PollingAdapter, ActivityEvent, ActivitySource, ActorType, PollState } from "./types"
 import { createJiraAdapter } from "./jira-adapter"
 import { createGitHubAdapter } from "./github-adapter"
 import { createGitLabAdapter } from "./gitlab-adapter"
@@ -50,6 +50,7 @@ export interface Interface {
     limit?: number
     offset?: number
     source?: ActivitySource
+    actorType?: ActorType
     unreadOnly?: boolean
   }) => Effect.Effect<ActivityEvent[]>
   readonly markRead: (id: string) => Effect.Effect<void>
@@ -101,6 +102,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
                 title: event.title,
                 summary: event.summary,
                 actor: event.actor,
+                actor_type: event.actor_type,
                 timestamp: event.timestamp,
                 url: event.url,
                 metadata: event.metadata,
@@ -163,12 +165,16 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
       limit?: number
       offset?: number
       source?: ActivitySource
+      actorType?: ActorType
       unreadOnly?: boolean
     }): ActivityEvent[] {
       return Database.use((db) => {
         const conditions = []
         if (opts?.source) {
           conditions.push(eq(ActivityEventTable.source, opts.source))
+        }
+        if (opts?.actorType) {
+          conditions.push(eq(ActivityEventTable.actor_type, opts.actorType))
         }
         if (opts?.unreadOnly) {
           conditions.push(eq(ActivityEventTable.is_read, 0))
@@ -376,6 +382,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
       limit?: number
       offset?: number
       source?: ActivitySource
+      actorType?: ActorType
       unreadOnly?: boolean
     }) {
       return queryEvents(opts)

@@ -1,5 +1,7 @@
 export type ActivitySource = "jira" | "github" | "gitlab"
 
+export type ActorType = "human" | "agent" | "system"
+
 export type ActivityEventType =
   // Jira event types
   | "issue_created"
@@ -34,6 +36,7 @@ export interface ActivityEvent {
   title: string
   summary: string | null
   actor: string | null
+  actor_type: ActorType
   timestamp: number
   url: string | null
   metadata: Record<string, unknown> | null

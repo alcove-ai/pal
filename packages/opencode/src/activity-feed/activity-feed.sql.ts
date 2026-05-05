@@ -13,6 +13,7 @@ export const ActivityEventTable = sqliteTable(
     timestamp: integer().notNull(),
     url: text(),
     metadata: text({ mode: "json" }),
+    actor_type: text().notNull().default("human"),
     is_read: integer().notNull().default(0),
     relevance: text(),
     relevance_reasoning: text(),
@@ -25,6 +26,7 @@ export const ActivityEventTable = sqliteTable(
     index("activity_event_timestamp_idx").on(table.timestamp),
     index("activity_event_is_read_timestamp_idx").on(table.is_read, table.timestamp),
     index("activity_event_relevance_idx").on(table.relevance, table.timestamp),
+    index("activity_event_actor_type_idx").on(table.actor_type, table.timestamp),
   ],
 )
 

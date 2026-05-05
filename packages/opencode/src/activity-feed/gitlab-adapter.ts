@@ -1,6 +1,7 @@
 import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
+import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
 
 const log = Log.create({ service: "activity-feed.gitlab" })
 
@@ -116,6 +117,7 @@ function parseToolResult<T>(result: unknown): T | null {
 
 export interface GitLabAdapterConfig {
   repos?: GitLabRepoConfig[]
+  agentDetector?: AgentDetectorConfig
 }
 
 export function createGitLabAdapter(
@@ -123,6 +125,7 @@ export function createGitLabAdapter(
   config?: GitLabAdapterConfig,
 ): PollingAdapter {
   const repos = config?.repos ?? DEFAULT_REPOS
+  const agentConfig = config?.agentDetector
 
   return {
     source: "gitlab",
@@ -176,6 +179,7 @@ export function createGitLabAdapter(
             listMRsTool,
             getPipelineTool,
             getReviewsTool,
+            agentConfig,
           )
           events.push(...repoEvents)
         } catch (err) {
@@ -196,6 +200,7 @@ async function pollRepo(
   listMRsTool: McpTool,
   getPipelineTool: McpTool | null,
   getReviewsTool: McpTool | null,
+  agentConfig?: AgentDetectorConfig,
 ): Promise<ActivityEvent[]> {
   const events: ActivityEvent[] = []
 
@@ -244,6 +249,7 @@ async function pollRepo(
         title: `${repo.projectPath}!${mr.iid}: ${mr.title}`,
         summary: `MR merged`,
         actor: mr.author.username,
+        actor_type: detectActorType(mr.author.username, baseMetadata, agentConfig),
         timestamp: parseTimestamp(mr.merged_at ?? mr.updated_at),
         url: mr.web_url,
         metadata: baseMetadata,
@@ -261,6 +267,7 @@ async function pollRepo(
         title: `${repo.projectPath}!${mr.iid}: ${mr.title}`,
         summary: `MR opened by ${mr.author.username}`,
         actor: mr.author.username,
+        actor_type: detectActorType(mr.author.username, baseMetadata, agentConfig),
         timestamp: parseTimestamp(mr.created_at),
         url: mr.web_url,
         metadata: baseMetadata,
@@ -300,6 +307,7 @@ async function pollRepo(
               title: `${repo.projectPath}!${mr.iid}: ${mr.title}`,
               summary: failedNames ? `Pipeline failed: ${failedNames}` : "Pipeline failed",
               actor: null,
+              actor_type: "system" as const,
               timestamp: parseTimestamp(pipelineData.updated_at),
               url: pipelineData.web_url ?? mr.web_url,
               metadata: {
@@ -358,6 +366,7 @@ async function pollRepo(
                 title: `${repo.projectPath}!${mr.iid}: ${mr.title}`,
                 summary: note.body ? note.body.slice(0, 200) : "New comment",
                 actor: note.author.username,
+                actor_type: detectActorType(note.author.username, baseMetadata, agentConfig),
                 timestamp: parseTimestamp(note.created_at),
                 url: mr.web_url,
                 metadata: {

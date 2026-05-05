@@ -8,6 +8,7 @@ export const DEFAULT_BASE_WEIGHTS: Record<string, number> = {
   blocked: 35,
   ci_failed: 30,
   pipeline_failed: 30,
+  agent_needs_review: 30,
   question_in_domain: 25,
   status_changed: 15,
   assigned: 15,
@@ -122,9 +123,26 @@ function isNeedsMePhase2(event: ActivityEvent): boolean {
   return (event.metadata as Record<string, unknown>).needsMe === true
 }
 
+function isAgentNeedsReview(event: ActivityEvent): boolean {
+  // Agent sessions that create items needing review:
+  // - PRs/MRs opened by agents
+  // - @-mentions from agents
+  // - Agent failures in owned domains
+  if (event.actor_type !== "agent") return false
+
+  if (event.event_type === "pr_opened" || event.event_type === "mr_opened") return true
+  if (event.event_type === "mentioned") return true
+  if (event.event_type === "ci_failed" || event.event_type === "pipeline_failed") return true
+
+  return false
+}
+
 function isTier1(event: ActivityEvent, config: NeedsMeConfig): boolean {
   if (isNeedsMePhase2(event)) return true
   if (TIER1_EVENT_TYPES.has(event.event_type)) return true
+
+  // Agent-created items needing review
+  if (isAgentNeedsReview(event)) return true
 
   // review_submitted directed at user
   if (event.event_type === "review_submitted") return true
@@ -275,6 +293,7 @@ export function classify(events: ActivityEvent[], config: NeedsMeConfig): Classi
     if (isTier1(event, config)) {
       tier = 1
       if (isNeedsMePhase2(event)) rule = "needsMe"
+      else if (isAgentNeedsReview(event)) rule = "agent_needs_review"
     } else if (isTier2(event, config)) {
       tier = 2
     }

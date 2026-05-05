@@ -1,0 +1,7 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "add-actor-type-001",
+  "prevIds": [],
+  "ddl": []
+}

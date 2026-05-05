@@ -4,7 +4,7 @@ import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
 import { Database } from "@/storage/db"
 import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
 import { desc, eq } from "drizzle-orm"
-import type { ActivityEvent, ActivitySource, ActivityEventType } from "@/activity-feed/types"
+import type { ActivityEvent, ActivitySource, ActorType, ActivityEventType } from "@/activity-feed/types"
 import { TextAttributes } from "@opentui/core"
 import type { RelevanceLevel } from "@/upstream-relevance/types"
 
@@ -110,12 +110,20 @@ function formatTimestamp(ts: number): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
-function loadEvents(): ActivityEvent[] {
+function loadEvents(actorTypeFilter?: ActorType): ActivityEvent[] {
   try {
     return Database.use((db) => {
-      return db
+      const query = db
         .select()
         .from(ActivityEventTable)
+      if (actorTypeFilter) {
+        return query
+          .where(eq(ActivityEventTable.actor_type, actorTypeFilter))
+          .orderBy(desc(ActivityEventTable.timestamp))
+          .limit(PAGE_SIZE)
+          .all() as ActivityEvent[]
+      }
+      return query
         .orderBy(desc(ActivityEventTable.timestamp))
         .limit(PAGE_SIZE)
         .all() as ActivityEvent[]
@@ -125,14 +133,40 @@ function loadEvents(): ActivityEvent[] {
   }
 }
 
+type ActorTypeFilter = "all" | ActorType
+
+const ACTOR_TYPE_FILTERS: ActorTypeFilter[] = ["all", "human", "agent"]
+
+function actorTypeBadge(actorType: ActorType | string): string {
+  switch (actorType) {
+    case "agent":
+      return "BOT"
+    case "system":
+      return "SYS"
+    case "human":
+      return "   "
+    default:
+      return "   "
+  }
+}
+
 export function Activity() {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const [events, setEvents] = createSignal<ActivityEvent[]>([])
   const [scrollOffset, setScrollOffset] = createSignal(0)
+  const [actorFilter, setActorFilter] = createSignal<ActorTypeFilter>("all")
+
+  function cycleActorFilter() {
+    const current = actorFilter()
+    const idx = ACTOR_TYPE_FILTERS.indexOf(current)
+    setActorFilter(ACTOR_TYPE_FILTERS[(idx + 1) % ACTOR_TYPE_FILTERS.length])
+    refresh()
+  }
 
   function refresh() {
-    setEvents(loadEvents())
+    const filter = actorFilter()
+    setEvents(loadEvents(filter === "all" ? undefined : filter))
   }
 
   onMount(() => {
@@ -159,11 +193,23 @@ export function Activity() {
   return (
     <box width={dimensions().width} flexGrow={1} flexDirection="column">
       {/* Header */}
-      <box height={1} flexShrink={0} paddingLeft={1}>
+      <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
           Activity Feed
         </text>
         <text fg={theme.textMuted}> ({events().length} events)</text>
+        <text fg={theme.textMuted}>{"  |  "}</text>
+        <text fg={theme.textMuted}>Actor: </text>
+        <For each={ACTOR_TYPE_FILTERS}>
+          {(filter) => (
+            <text
+              fg={actorFilter() === filter ? theme.primary : theme.textMuted}
+              attributes={actorFilter() === filter ? TextAttributes.BOLD : 0}
+            >
+              {` ${filter === "all" ? "All" : filter === "human" ? "Human" : "Agent"} `}
+            </text>
+          )}
+        </For>
       </box>
 
       {/* Column headers */}
@@ -181,6 +227,11 @@ export function Activity() {
         <box width={5} flexShrink={0}>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
             Type
+          </text>
+        </box>
+        <box width={5} flexShrink={0}>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+            Who
           </text>
         </box>
         <box width={5} flexShrink={0}>
@@ -232,6 +283,14 @@ export function Activity() {
                   </box>
                   <box width={5} flexShrink={0}>
                     <text fg={badgeColor()}>{eventTypeBadge(event.event_type as ActivityEventType)}</text>
+                  </box>
+                  <box width={5} flexShrink={0}>
+                    <text
+                      fg={event.actor_type === "agent" ? (theme.warning ?? theme.primary) : theme.textMuted}
+                      attributes={event.actor_type === "agent" ? TextAttributes.BOLD : 0}
+                    >
+                      {actorTypeBadge(event.actor_type ?? "human")}
+                    </text>
                   </box>
                   <box width={5} flexShrink={0}>
                     <Show when={showRelevance()}>

@@ -1,6 +1,7 @@
 import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
+import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
 
 const log = Log.create({ service: "activity-feed.github" })
 
@@ -188,6 +189,7 @@ export interface GitHubAdapterConfig {
   tier3Repos?: string[]
   botIgnoreList?: string[]
   upstreamPollOrg?: string
+  agentDetector?: AgentDetectorConfig
 }
 
 export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapter {
@@ -196,6 +198,7 @@ export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapte
   const tier3 = config?.tier3Repos ?? DEFAULT_TIER3_REPOS
   const bots = new Set(config?.botIgnoreList ?? BOT_IGNORE_LIST)
   const upstreamOrg = config?.upstreamPollOrg ?? "pulp"
+  const agentConfig = config?.agentDetector
 
   let pollCount = 0
 
@@ -217,16 +220,16 @@ export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapte
       pollCount++
 
       // 1. GitHub Notifications
-      const notifEvents = await pollNotifications(tier1, tier2, tier3, bots)
+      const notifEvents = await pollNotifications(tier1, tier2, tier3, bots, agentConfig)
       events.push(...notifEvents)
 
       // 2. PR polling for tier1 repos
-      const prEvents = await pollTier1PRs(tier1, bots)
+      const prEvents = await pollTier1PRs(tier1, bots, agentConfig)
       events.push(...prEvents)
 
       // 3. Upstream review requests (every 5min ~ every 3rd poll at 90s base)
       if (pollCount % 3 === 1) {
-        const upstreamEvents = await pollUpstreamReviewRequests(upstreamOrg, bots)
+        const upstreamEvents = await pollUpstreamReviewRequests(upstreamOrg, bots, agentConfig)
         events.push(...upstreamEvents)
       }
 
@@ -240,6 +243,7 @@ async function pollNotifications(
   tier2: string[],
   tier3: string[],
   bots: Set<string>,
+  agentConfig?: AgentDetectorConfig,
 ): Promise<ActivityEvent[]> {
   const events: ActivityEvent[] = []
 
@@ -287,6 +291,7 @@ async function pollNotifications(
       title: notif.subject.title,
       summary: `${notif.reason.replace("_", " ")} on ${repoFullName}`,
       actor: null, // Notifications API doesn't include actor
+      actor_type: "human" as const,
       timestamp: parseTimestamp(notif.updated_at),
       url,
       metadata: {
@@ -306,7 +311,7 @@ async function pollNotifications(
   return events
 }
 
-async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<ActivityEvent[]> {
+async function pollTier1PRs(tier1: string[], bots: Set<string>, agentConfig?: AgentDetectorConfig): Promise<ActivityEvent[]> {
   const events: ActivityEvent[] = []
 
   for (const repo of tier1) {
@@ -337,6 +342,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           title: `${repo}#${pr.number}: ${pr.title}`,
           summary: `PR merged`,
           actor: pr.user.login,
+          actor_type: detectActorType(pr.user.login, baseMetadata, agentConfig),
           timestamp: parseTimestamp(pr.merged_at),
           url: pr.html_url,
           metadata: baseMetadata,
@@ -354,6 +360,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           title: `${repo}#${pr.number}: ${pr.title}`,
           summary: `PR closed without merge`,
           actor: pr.user.login,
+          actor_type: detectActorType(pr.user.login, baseMetadata, agentConfig),
           timestamp: parseTimestamp(pr.updated_at),
           url: pr.html_url,
           metadata: baseMetadata,
@@ -372,6 +379,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
           title: `${repo}#${pr.number}: ${pr.title}`,
           summary: `PR opened by ${pr.user.login}`,
           actor: pr.user.login,
+          actor_type: detectActorType(pr.user.login, baseMetadata, agentConfig),
           timestamp: parseTimestamp(pr.created_at),
           url: pr.html_url,
           metadata: baseMetadata,
@@ -392,6 +400,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
               title: `${repo}#${pr.number}: ${pr.title}`,
               summary: `Review requested from ${reviewer.login}`,
               actor: pr.user.login,
+              actor_type: detectActorType(pr.user.login, baseMetadata, agentConfig),
               timestamp: parseTimestamp(pr.updated_at),
               url: pr.html_url,
               metadata: { ...baseMetadata, reviewer: reviewer.login },
@@ -420,6 +429,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
               title: `${repo}#${pr.number}: ${pr.title}`,
               summary: `Review ${review.state.toLowerCase()} by ${review.user.login}`,
               actor: review.user.login,
+              actor_type: detectActorType(review.user.login, baseMetadata, agentConfig),
               timestamp: parseTimestamp(review.submitted_at),
               url: pr.html_url,
               metadata: {
@@ -453,6 +463,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
               title: `${repo}#${pr.number}: ${pr.title}`,
               summary: `CI failed: ${failedNames}`,
               actor: null,
+              actor_type: "system" as const,
               timestamp: parseTimestamp(failedRuns[0].completed_at),
               url: failedRuns[0].html_url,
               metadata: {
@@ -473,7 +484,7 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>): Promise<Activit
   return events
 }
 
-async function pollUpstreamReviewRequests(org: string, bots: Set<string>): Promise<ActivityEvent[]> {
+async function pollUpstreamReviewRequests(org: string, bots: Set<string>, agentConfig?: AgentDetectorConfig): Promise<ActivityEvent[]> {
   const events: ActivityEvent[] = []
 
   const searchResult = await ghApi<GitHubSearchResult>(
@@ -499,6 +510,7 @@ async function pollUpstreamReviewRequests(org: string, bots: Set<string>): Promi
       title: `${repo}#${item.number}: ${item.title}`,
       summary: `Review requested from you`,
       actor: item.user.login,
+      actor_type: detectActorType(item.user.login, { repo, upstream: true }, agentConfig),
       timestamp: parseTimestamp(item.updated_at),
       url: item.html_url,
       metadata: {

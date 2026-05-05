@@ -1,6 +1,7 @@
 import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
+import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
 
 /** Minimal tool interface matching what MCP.tools() returns */
 interface McpTool {
@@ -86,7 +87,7 @@ function parseTimestamp(dateStr: string | null | undefined): number {
   return isNaN(ms) ? Date.now() : ms
 }
 
-export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool> | undefined>): PollingAdapter {
+export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool> | undefined>, agentConfig?: AgentDetectorConfig): PollingAdapter {
   return {
     source: "jira",
 
@@ -187,6 +188,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
             title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
             summary: `Issue created`,
             actor: issue.fields.creator?.displayName ?? null,
+            actor_type: detectActorType(issue.fields.creator?.displayName ?? null, baseMetadata, agentConfig),
             timestamp: createdTs,
             url: issueUrl(issue.key),
             metadata: baseMetadata,
@@ -215,6 +217,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                   title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
                   summary: `Issue blocked`,
                   actor: historyActor,
+                  actor_type: detectActorType(historyActor, { ...baseMetadata, blocked: true }, agentConfig),
                   timestamp: historyTs,
                   url: issueUrl(issue.key),
                   metadata: { ...baseMetadata, blocked: true },
@@ -237,6 +240,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                   title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
                   summary,
                   actor: historyActor,
+                  actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
                   timestamp: historyTs,
                   url: issueUrl(issue.key),
                   metadata: {
@@ -259,6 +263,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                   title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
                   summary: `Field "${item.field}" updated`,
                   actor: historyActor,
+                  actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
                   timestamp: historyTs,
                   url: issueUrl(issue.key),
                   metadata: {
@@ -287,6 +292,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
               title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
               summary: comment.body ? comment.body.slice(0, 200) : "New comment",
               actor: comment.author?.displayName ?? null,
+              actor_type: detectActorType(comment.author?.displayName ?? null, { ...baseMetadata, comment_id: comment.id }, agentConfig),
               timestamp: commentTs,
               url: issueUrl(issue.key),
               metadata: { ...baseMetadata, comment_id: comment.id },
