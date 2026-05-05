@@ -1,5 +1,12 @@
 #!/bin/sh
 set -e
+
+# Ensure bun is on PATH (default install location)
+if ! command -v bun >/dev/null 2>&1; then
+  export BUN_INSTALL="${HOME}/.bun"
+  export PATH="${BUN_INSTALL}/bin:${PATH}"
+fi
+
 # Check if bun version matches package.json
 # keep in sync with packages/script/src/index.ts semver qualifier
 bun -e '
