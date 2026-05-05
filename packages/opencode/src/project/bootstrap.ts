@@ -12,6 +12,7 @@ import { ShareNext } from "@/share/share-next"
 import { Effect, Layer } from "effect"
 import { Config } from "@/config/config"
 import { Service } from "./bootstrap-service"
+import { ActivityFeed } from "@/activity-feed"
 
 export { Service } from "./bootstrap-service"
 export type { Interface } from "./bootstrap-service"
@@ -32,6 +33,7 @@ export const layer = Layer.effect(
     const shareNext = yield* ShareNext.Service
     const snapshot = yield* Snapshot.Service
     const vcs = yield* Vcs.Service
+    const activityFeed = yield* ActivityFeed.Service
 
     const run = Effect.gen(function* () {
       const ctx = yield* InstanceState.context
@@ -47,6 +49,10 @@ export const layer = Layer.effect(
         (s) => s.init().pipe(Effect.catchCause((cause) => Effect.logWarning("init failed", { cause }))),
         { concurrency: "unbounded", discard: true },
       ).pipe(Effect.withSpan("InstanceBootstrap.init"))
+      // Start activity feed polling (non-blocking)
+      yield* activityFeed
+        .start()
+        .pipe(Effect.catchCause((cause) => Effect.logWarning("activity feed start failed", { cause })))
     }).pipe(Effect.withSpan("InstanceBootstrap"))
 
     return Service.of({ run })
@@ -66,6 +72,7 @@ export const defaultLayer: Layer.Layer<Service> = layer.pipe(
     ShareNext.defaultLayer,
     Snapshot.defaultLayer,
     Vcs.defaultLayer,
+    ActivityFeed.defaultLayer,
   ]),
 )
 
