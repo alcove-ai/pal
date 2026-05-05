@@ -84,7 +84,11 @@ fi
 # --- Verify checksum ---
 
 EXPECTED="$(cat "${TMPDIR}/${BINARY_NAME}.sha256" | tr -d '[:space:]')"
-ACTUAL="$(sha256sum "${TMPDIR}/${BINARY_NAME}" | awk '{print $1}')"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "${TMPDIR}/${BINARY_NAME}" | awk '{print $1}')"
+else
+  ACTUAL="$(shasum -a 256 "${TMPDIR}/${BINARY_NAME}" | awk '{print $1}')"
+fi
 
 if [ "${EXPECTED}" != "${ACTUAL}" ]; then
   echo "Error: checksum verification failed" >&2
@@ -105,17 +109,24 @@ echo "pal: installed to ${INSTALL_DIR}/${BINARY_NAME}"
 
 # --- Check PATH ---
 
+ON_PATH=true
 case ":${PATH}:" in
   *":${INSTALL_DIR}:"*)
     ;;
   *)
-    echo ""
-    echo "WARNING: ${INSTALL_DIR} is not on your PATH."
-    echo "Add it to your shell profile:"
-    echo ""
-    echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
-    echo ""
+    ON_PATH=false
     ;;
 esac
 
-echo "pal: done"
+echo ""
+if [ "${ON_PATH}" = true ]; then
+  echo "  Run 'pal' to get started."
+else
+  echo "  ${INSTALL_DIR} is not on your PATH. Add it:"
+  echo ""
+  echo "    echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+  echo ""
+  echo "  Then run 'pal' to get started."
+fi
+echo ""
+echo "  PAL auto-updates on startup. Set PAL_NO_UPDATE_CHECK=1 to disable."
