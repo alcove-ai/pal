@@ -39,14 +39,8 @@ build-linux-x64:
     - *setup_bun
     - *set_version
     - *generate_snapshot
-    - |
-      export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile --conditions=browser \
-        --target=bun-linux-x64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-linux-x64 \
-        packages/opencode/src/index.ts
+    - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
+    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
     - echo "${VERSION}" > version.txt
     - |
@@ -67,14 +61,8 @@ build-linux-arm64:
     - *setup_bun
     - *set_version
     - *generate_snapshot
-    - |
-      export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile --conditions=browser \
-        --target=bun-linux-arm64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-linux-arm64 \
-        packages/opencode/src/index.ts
+    - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
+    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-arm64 ../../pal-linux-arm64 && cd ../..
     - sha256sum pal-linux-arm64 | awk '{print $1}' > pal-linux-arm64.sha256
     - |
       for file in pal-linux-arm64 pal-linux-arm64.sha256; do
@@ -92,14 +80,8 @@ build-darwin-arm64:
     - *setup_bun
     - *set_version
     - *generate_snapshot
-    - |
-      export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile --conditions=browser \
-        --target=bun-darwin-arm64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-darwin-arm64 \
-        packages/opencode/src/index.ts
+    - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
+    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-darwin-arm64 ../../pal-darwin-arm64 && cd ../..
     - sha256sum pal-darwin-arm64 | awk '{print $1}' > pal-darwin-arm64.sha256
     - |
       for file in pal-darwin-arm64 pal-darwin-arm64.sha256; do
