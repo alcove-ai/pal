@@ -38,8 +38,8 @@ build:
     # Generate models snapshot
     - cd packages/opencode && bun run script/generate.ts && cd ../..
 
-    # Build linux-x64 (native on this runner — no cross-compile download)
-    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
+    # Build linux-x64 (use local bun as compile base to avoid network download)
+    - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" BUN_COMPILE_EXECUTABLE_PATH="${HOME:-/tmp/ci-home}/.bun/bin/bun" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
 
   artifacts:

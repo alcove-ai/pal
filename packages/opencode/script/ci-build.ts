@@ -1,7 +1,14 @@
 #!/usr/bin/env bun
-import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+/**
+ * CI build script for PAL.
+ *
+ * Uses Bun.build() API with compile:true and the SolidJS transform plugin.
+ * On CI, set BUN_COMPILE_EXECUTABLE_PATH to a pre-downloaded bun binary
+ * to avoid the compile step hanging while downloading the bun runtime.
+ */
 import fs from "fs"
 import path from "path"
+import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const target = process.argv[2]
 const outfile = process.argv[3]
@@ -13,12 +20,14 @@ if (!target || !outfile) {
   process.exit(1)
 }
 
+const [, targetOs] = target.match(/^bun-(\w+)-(\w+)$/) ?? []
+
 const dir = path.resolve(import.meta.dir, "..")
 const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
 const rootPath = path.resolve(dir, "../../node_modules/@opentui/core/parser.worker.js")
 const parserWorker = fs.realpathSync(fs.existsSync(localPath) ? localPath : rootPath)
 const workerPath = "./src/cli/cmd/tui/worker.ts"
-const bunfsRoot = target.includes("win32") ? "B:/~BUN/root/" : "/$bunfs/root/"
+const bunfsRoot = targetOs === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
 const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
 // Load migrations
@@ -54,6 +63,10 @@ const result = await Bun.build({
   sourcemap: "none",
   splitting: true,
   compile: {
+    autoloadBunfig: false,
+    autoloadDotenv: false,
+    autoloadTsconfig: true,
+    autoloadPackageJson: true,
     target: target as any,
     outfile,
   },
@@ -64,11 +77,14 @@ const result = await Bun.build({
     OPENCODE_MIGRATIONS: JSON.stringify(migrations),
     OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
     OPENCODE_WORKER_PATH: workerPath,
+    OPENCODE_LIBC: targetOs === "linux" ? `'glibc'` : "",
   },
 })
 
 if (!result.success) {
-  console.error("Build failed:", result.logs)
+  console.error("Build failed:")
+  for (const log of result.logs) console.error(log)
   process.exit(1)
 }
-console.log(`Built ${outfile} for ${target}`)
+
+console.log(`Done: ${outfile}`)
