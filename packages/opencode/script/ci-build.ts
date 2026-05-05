@@ -1,36 +1,29 @@
 #!/usr/bin/env bun
 /**
- * CI build script for PAL — two-phase approach.
+ * CI build script for PAL — bundle only (no compile).
  *
- * Bun.build() API with compile:true hangs on CI runners (the promise
- * never resolves). The CLI `bun build --compile` works but can't load
- * plugins. So we split:
- *
- *   Phase 1: Bun.build() API — bundles with SolidJS plugin, no compile
- *   Phase 2: `bun build --compile` CLI — compiles the pre-bundled JS
- *
- * Phase 1 defines process.platform/process.arch so the @opentui/core
- * dynamic import resolves at bundle time. minify is off so phase 2
- * can safely re-process the bundle.
+ * Bun.build() API hangs on the CI runner after the promise resolves.
+ * This script uses a hard timeout to force exit after bundling.
+ * The CI pipeline then calls `bun build --compile` CLI separately.
  */
-import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
-const target = process.argv[2]
-const outfile = process.argv[3]
+// Force exit after 5 minutes no matter what
+setTimeout(() => {
+  console.error("TIMEOUT: ci-build.ts exceeded 5 minute limit")
+  process.exit(2)
+}, 300_000)
+
+const outdir = process.argv[2]
 const version = process.env.OPENCODE_VERSION || "0.0.0"
 const channel = process.env.OPENCODE_CHANNEL || "latest"
+const targetOs = process.env.TARGET_OS || "linux"
+const targetArch = process.env.TARGET_ARCH || "x64"
 
-if (!target || !outfile) {
-  console.error("Usage: OPENCODE_VERSION=x.y.z bun run ci-build.ts <target> <outfile>")
-  process.exit(1)
-}
-
-const [, targetOs, targetArch] = target.match(/^bun-(\w+)-(\w+)$/) ?? []
-if (!targetOs || !targetArch) {
-  console.error(`Invalid target: ${target} (expected bun-<os>-<arch>)`)
+if (!outdir) {
+  console.error("Usage: TARGET_OS=linux TARGET_ARCH=x64 bun run ci-build.ts <outdir>")
   process.exit(1)
 }
 
@@ -42,7 +35,6 @@ const workerPath = "./src/cli/cmd/tui/worker.ts"
 const bunfsRoot = targetOs === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
 const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
-// Load migrations
 const migrationDirs = (
   await fs.promises.readdir(path.join(dir, "migration"), { withFileTypes: true })
 )
@@ -63,13 +55,12 @@ const migrations = await Promise.all(
 )
 console.log(`Loaded ${migrations.length} migrations`)
 
-// Phase 1: Bundle with SolidJS transform (no compile)
-console.log(`Phase 1: bundling for ${targetOs}-${targetArch}...`)
 const plugin = createSolidTransformPlugin()
-const outdir = path.resolve(dir, "dist/ci-bundle")
-await $`rm -rf ${outdir}`
+const resolvedOutdir = path.resolve(dir, outdir)
+fs.rmSync(resolvedOutdir, { recursive: true, force: true })
 
-const bundleResult = await Bun.build({
+console.log(`Bundling for ${targetOs}-${targetArch}...`)
+const result = await Bun.build({
   conditions: ["browser"],
   plugins: [plugin],
   external: ["node-gyp"],
@@ -79,7 +70,7 @@ const bundleResult = await Bun.build({
   target: "bun",
   splitting: true,
   entrypoints: ["./src/index.ts", parserWorker, workerPath],
-  outdir,
+  outdir: resolvedOutdir,
   define: {
     OPENCODE_VERSION: `'${version}'`,
     OPENCODE_CHANNEL: `'${channel}'`,
@@ -92,22 +83,12 @@ const bundleResult = await Bun.build({
   },
 })
 
-if (!bundleResult.success) {
-  console.error("Phase 1 failed:")
-  for (const log of bundleResult.logs) console.error(log)
+if (!result.success) {
+  console.error("Bundle failed:")
+  for (const log of result.logs) console.error(log)
   process.exit(1)
 }
 
-const entryBundle = bundleResult.outputs.find((o) => o.path.endsWith("index.js"))
-if (!entryBundle) {
-  console.error("Could not find index.js in bundle output")
-  process.exit(1)
-}
-console.log(`  -> ${entryBundle.path}`)
-
-// Phase 2: Compile with CLI (doesn't hang)
-console.log(`Phase 2: compiling ${target} -> ${outfile}`)
-await $`bun build --compile --target=${target} --no-compile-autoload-bunfig --outfile ${outfile} ${entryBundle.path}`
-
-console.log(`Done: ${outfile}`)
+const entry = result.outputs.find((o) => o.path.endsWith("index.js"))
+console.log(`Bundle: ${entry?.path}`)
 process.exit(0)
