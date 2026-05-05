@@ -2,9 +2,9 @@
 /**
  * CI build script for PAL.
  *
- * Uses Bun.build() API with compile:true and the SolidJS transform plugin.
- * On CI, set BUN_COMPILE_EXECUTABLE_PATH to a pre-downloaded bun binary
- * to avoid the compile step hanging while downloading the bun runtime.
+ * Uses Bun.build() API with compile:true. The API path leaves open handles
+ * after the promise resolves (unlike the CLI), so we call process.exit()
+ * explicitly. See: https://github.com/oven-sh/bun/discussions/2936
  */
 import fs from "fs"
 import path from "path"
@@ -88,3 +88,4 @@ if (!result.success) {
 }
 
 console.log(`Done: ${outfile}`)
+process.exit(0)
