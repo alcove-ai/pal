@@ -60,7 +60,7 @@
     },
     "packages/opencode": {
       "name": "opencode",
-      "version": "1.14.34",
+      "version": "0.1.0",
       "bin": {
         "pal": "./bin/pal",
       },

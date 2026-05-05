@@ -1,11 +1,29 @@
 stages:
+  - typecheck
   - build
   - release
 
 variables:
   BUN_VERSION: "1.3.13"
-  ENTRY_POINT: "packages/opencode/src/index.ts"
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/pal"
+
+.install_bun: &install_bun
+  - curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+  - export BUN_INSTALL="$HOME/.bun"
+  - export PATH="$BUN_INSTALL/bin:$PATH"
+  - bun --version
+  - bun install --frozen-lockfile
+
+typecheck:
+  stage: typecheck
+  tags:
+    - itup-alm-x86
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_MERGE_REQUEST_IID
+  script:
+    - *install_bun
+    - bun turbo typecheck
 
 build:
   stage: build
@@ -14,42 +32,23 @@ build:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
-    # Install Bun (pinned version, avoid 1.3.12)
-    - curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
-    - export BUN_INSTALL="$HOME/.bun"
-    - export PATH="$BUN_INSTALL/bin:$PATH"
-    - bun --version
-
-    # Install dependencies
-    - bun install --frozen-lockfile
+    - *install_bun
 
     # Read version from package.json
     - VERSION=$(bun -e "console.log(require('./packages/opencode/package.json').version)")
     - echo "Building PAL v${VERSION}"
     - echo "${VERSION}" > version.txt
 
-    # Cross-compile binaries
-    - |
-      bun build --compile \
-        --target=bun-linux-x64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-linux-x64 \
-        ${ENTRY_POINT}
-    - |
-      bun build --compile \
-        --target=bun-linux-arm64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-linux-arm64 \
-        ${ENTRY_POINT}
-    - |
-      bun build --compile \
-        --target=bun-darwin-arm64 \
-        --define "OPENCODE_VERSION='${VERSION}'" \
-        --define "OPENCODE_CHANNEL='latest'" \
-        --outfile pal-darwin-arm64 \
-        ${ENTRY_POINT}
+    # Run the proper build (generates models-snapshot, inlines migrations,
+    # applies SolidJS transforms, cross-compiles all targets)
+    - cd packages/opencode
+    - OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run build
+    - cd ../..
+
+    # Extract the 3 binaries PAL distributes and rename to pal-*
+    - cp packages/opencode/dist/opencode-linux-x64/bin/opencode pal-linux-x64
+    - cp packages/opencode/dist/opencode-linux-arm64/bin/opencode pal-linux-arm64
+    - cp packages/opencode/dist/opencode-darwin-arm64/bin/opencode pal-darwin-arm64
 
     # Generate SHA-256 checksums
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256

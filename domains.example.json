@@ -1,0 +1,11 @@
+{
+  "domains": [
+    {
+      "name": "example-domain",
+      "jira_components": ["component-name"],
+      "jira_labels": ["area/example"],
+      "repo_globs": ["pulp/pulp-example-*"],
+      "owner": "jdoe"
+    }
+  ]
+}
