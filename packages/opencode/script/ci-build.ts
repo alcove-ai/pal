@@ -1,11 +1,19 @@
 #!/usr/bin/env bun
 /**
- * CI build script for PAL.
+ * CI build script for PAL — two-phase approach.
  *
- * Uses Bun.build() API with compile:true. The API path leaves open handles
- * after the promise resolves (unlike the CLI), so we call process.exit()
- * explicitly. See: https://github.com/oven-sh/bun/discussions/2936
+ * Bun.build() API with compile:true hangs on CI runners (the promise
+ * never resolves). The CLI `bun build --compile` works but can't load
+ * plugins. So we split:
+ *
+ *   Phase 1: Bun.build() API — bundles with SolidJS plugin, no compile
+ *   Phase 2: `bun build --compile` CLI — compiles the pre-bundled JS
+ *
+ * Phase 1 defines process.platform/process.arch so the @opentui/core
+ * dynamic import resolves at bundle time. minify is off so phase 2
+ * can safely re-process the bundle.
  */
+import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -20,7 +28,11 @@ if (!target || !outfile) {
   process.exit(1)
 }
 
-const [, targetOs] = target.match(/^bun-(\w+)-(\w+)$/) ?? []
+const [, targetOs, targetArch] = target.match(/^bun-(\w+)-(\w+)$/) ?? []
+if (!targetOs || !targetArch) {
+  console.error(`Invalid target: ${target} (expected bun-<os>-<arch>)`)
+  process.exit(1)
+}
 
 const dir = path.resolve(import.meta.dir, "..")
 const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
@@ -51,26 +63,23 @@ const migrations = await Promise.all(
 )
 console.log(`Loaded ${migrations.length} migrations`)
 
+// Phase 1: Bundle with SolidJS transform (no compile)
+console.log(`Phase 1: bundling for ${targetOs}-${targetArch}...`)
 const plugin = createSolidTransformPlugin()
+const outdir = path.resolve(dir, "dist/ci-bundle")
+await $`rm -rf ${outdir}`
 
-console.log(`Building ${target} -> ${outfile}`)
-const result = await Bun.build({
+const bundleResult = await Bun.build({
   conditions: ["browser"],
   plugins: [plugin],
   external: ["node-gyp"],
   format: "esm",
-  minify: true,
+  minify: false,
   sourcemap: "none",
+  target: "bun",
   splitting: true,
-  compile: {
-    autoloadBunfig: false,
-    autoloadDotenv: false,
-    autoloadTsconfig: true,
-    autoloadPackageJson: true,
-    target: target as any,
-    outfile,
-  },
   entrypoints: ["./src/index.ts", parserWorker, workerPath],
+  outdir,
   define: {
     OPENCODE_VERSION: `'${version}'`,
     OPENCODE_CHANNEL: `'${channel}'`,
@@ -78,14 +87,27 @@ const result = await Bun.build({
     OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
     OPENCODE_WORKER_PATH: workerPath,
     OPENCODE_LIBC: targetOs === "linux" ? `'glibc'` : "",
+    "process.platform": `'${targetOs}'`,
+    "process.arch": `'${targetArch}'`,
   },
 })
 
-if (!result.success) {
-  console.error("Build failed:")
-  for (const log of result.logs) console.error(log)
+if (!bundleResult.success) {
+  console.error("Phase 1 failed:")
+  for (const log of bundleResult.logs) console.error(log)
   process.exit(1)
 }
+
+const entryBundle = bundleResult.outputs.find((o) => o.path.endsWith("index.js"))
+if (!entryBundle) {
+  console.error("Could not find index.js in bundle output")
+  process.exit(1)
+}
+console.log(`  -> ${entryBundle.path}`)
+
+// Phase 2: Compile with CLI (doesn't hang)
+console.log(`Phase 2: compiling ${target} -> ${outfile}`)
+await $`bun build --compile --target=${target} --no-compile-autoload-bunfig --outfile ${outfile} ${entryBundle.path}`
 
 console.log(`Done: ${outfile}`)
 process.exit(0)
