@@ -22,6 +22,15 @@ import * as Log from "@opencode-ai/core/util/log"
 
 const log = Log.create({ service: "pal-update" })
 
+type UpdateListener = (version: string) => void
+const _listeners: UpdateListener[] = []
+let _completedVersion: string | null = null
+
+export function onUpdateComplete(cb: UpdateListener): void {
+  if (_completedVersion) cb(_completedVersion)
+  else _listeners.push(cb)
+}
+
 const CONTENT_BASE = "https://packages.redhat.com/api/pulp-content/public-pal/pal"
 const VERSION_URL = `${CONTENT_BASE}/latest/version.txt`
 const METADATA_TIMEOUT_MS = 5_000
@@ -220,7 +229,10 @@ export async function checkForUpdate(): Promise<void> {
       return
     }
 
-    process.stderr.write(`pal: updated to v${remoteVersion}, restart to apply\n`)
+    _completedVersion = remoteVersion
+    for (const cb of _listeners) cb(remoteVersion)
+    _listeners.length = 0
+    log.info("auto-update complete", { version: remoteVersion })
   } catch (e) {
     // Catch-all: never let update check crash the app
     log.debug("update check failed", { error: e instanceof Error ? e.message : String(e) })

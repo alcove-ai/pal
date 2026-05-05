@@ -46,6 +46,7 @@ import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
 import { TabBar } from "@tui/component/tab-bar"
 import { getTabs, getTabCount } from "@tui/pal/tab-registry"
+import { onUpdateComplete } from "@/installation/pal-update"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -261,6 +262,16 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
     .finally(() => {
       setReady(true)
+
+      // Show toast when PAL auto-update completes (may happen during or after startup)
+      onUpdateComplete((version) => {
+        toast.show({
+          variant: "success",
+          title: "PAL Updated",
+          message: `Updated to v${version}. Restart to apply.`,
+          duration: 15000,
+        })
+      })
     })
 
   useKeyboard((evt) => {
