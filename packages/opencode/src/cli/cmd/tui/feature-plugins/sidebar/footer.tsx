@@ -64,11 +64,11 @@ function View(props: { api: TuiPluginApi }) {
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
       <text fg={theme().textMuted}>
-        <span style={{ fg: theme().success }}>•</span> <b>Open</b>
+        <span style={{ fg: theme().success }}>•</span>{" "}
         <span style={{ fg: theme().text }}>
-          <b>Code</b>
+          <b>PAL</b>
         </span>{" "}
-        <span>{props.api.app.version}</span>
+        <span>v{props.api.app.version}</span>
       </text>
     </box>
   )
