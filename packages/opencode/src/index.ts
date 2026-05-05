@@ -12,6 +12,7 @@ import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { checkForUpdate } from "./installation/pal-update"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
@@ -68,11 +69,11 @@ function show(out: string) {
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("pal")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
-  .version("version", "show version number", InstallationVersion)
+  .version("version", "show version number", `PAL v${InstallationVersion}`)
   .alias("version", "v")
   .option("print-logs", {
     describe: "print logs to stderr",
@@ -114,6 +115,9 @@ const cli = yargs(args)
       process_role: processMetadata.processRole,
       run_id: processMetadata.runID,
     })
+
+    // Fire-and-forget auto-update check (non-blocking)
+    checkForUpdate().catch(() => {})
 
     const marker = path.join(Global.Path.data, "opencode.db")
     if (!(await Filesystem.exists(marker))) {
