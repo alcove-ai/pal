@@ -1,10 +1,13 @@
 stages:
   - build
-  - release
+  - publish
 
 variables:
   BUN_VERSION: "1.3.13"
-  PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/pal"
+  PULP_BASE: "https://packages.redhat.com"
+  PULP_DOMAIN: "public-pal"
+  PULP_REPO: "pal-releases"
+  PULP_CONTENT_BASE: "https://packages.redhat.com/api/pulp-content/public-pal/pal"
 
 build:
   stage: build
@@ -25,6 +28,7 @@ build:
       chmod +x "$BUN_INSTALL/bin/bun"
       bun --version
       bun install --frozen-lockfile --ignore-scripts
+      bun install --os="*" --cpu="*" --ignore-scripts @opentui/core@0.2.2
 
     - export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
     - VERSION=$(bun -e "console.log(require('./packages/opencode/package.json').version)")
@@ -34,23 +38,18 @@ build:
     # Generate models snapshot
     - cd packages/opencode && bun run script/generate.ts && cd ../..
 
-    # Build native linux-x64 binary (single target, no cross-compile download)
+    # Build linux-x64 (native on this runner — no cross-compile download)
     - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
 
-    # Upload to Package Registry
-    - |
-      for file in pal-linux-x64 pal-linux-x64.sha256 version.txt; do
-        curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-             --upload-file "${file}" \
-             "${PACKAGE_REGISTRY_URL}/${VERSION}/${file}"
-      done
-
   artifacts:
-    paths: [version.txt]
+    paths:
+      - version.txt
+      - pal-linux-x64
+      - pal-linux-x64.sha256
 
-release:
-  stage: release
+publish:
+  stage: publish
   tags: [itup-alm-x86]
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
@@ -59,28 +58,80 @@ release:
       artifacts: true
   script:
     - VERSION=$(cat version.txt)
-    - echo "Releasing PAL v${VERSION}"
+    - echo "Publishing PAL v${VERSION} to packages.redhat.com"
+
+    # Upload each file to the Pulp file repository via the API
+    - |
+      PULP_API="${PULP_BASE}/api/pulp/${PULP_DOMAIN}/api/v3"
+      REPO_HREF=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+        "${PULP_API}/repositories/file/file/?name=${PULP_REPO}" \
+        | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['pulp_href'])")
+      echo "Repository: ${REPO_HREF}"
+
+      upload_file() {
+        local file="$1" relpath="$2"
+        echo "Uploading ${file} -> ${relpath}"
+        TASK_HREF=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+          -F "file=@${file}" \
+          -F "relative_path=${relpath}" \
+          -F "repository=${REPO_HREF}" \
+          "${PULP_API}/content/file/files/" \
+          | python3 -c "import json,sys; print(json.load(sys.stdin).get('task',''))")
+        if [ -n "${TASK_HREF}" ]; then
+          for i in $(seq 1 30); do
+            STATE=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+              "${PULP_BASE}${TASK_HREF}" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))")
+            [ "${STATE}" = "completed" ] && echo "  done" && return
+            [ "${STATE}" = "failed" ] && echo "  FAILED" && exit 1
+            sleep 2
+          done
+        fi
+      }
+
+      upload_file pal-linux-x64       "v${VERSION}/pal-linux-x64"
+      upload_file pal-linux-x64.sha256 "v${VERSION}/pal-linux-x64.sha256"
+      upload_file version.txt          "v${VERSION}/version.txt"
+      upload_file version.txt          "latest/version.txt"
+
+    # Create a publication so content is served
+    - |
+      echo "Creating publication..."
+      PUB_TASK=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+        -H "Content-Type: application/json" \
+        -d "{\"repository\": \"${REPO_HREF}\"}" \
+        "${PULP_API}/publications/file/file/" \
+        | python3 -c "import json,sys; print(json.load(sys.stdin).get('task',''))")
+      for i in $(seq 1 30); do
+        STATE=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+          "${PULP_BASE}${PUB_TASK}" \
+          | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))")
+        [ "${STATE}" = "completed" ] && break
+        [ "${STATE}" = "failed" ] && echo "Publication failed" && exit 1
+        sleep 2
+      done
+      echo "Published."
+
+    # Verify download URL works
+    - |
+      echo "Verifying download..."
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${PULP_CONTENT_BASE}/v${VERSION}/version.txt")
+      echo "version.txt => HTTP ${HTTP_CODE}"
+      if [ "${HTTP_CODE}" != "200" ]; then
+        echo "WARNING: Download URL returned ${HTTP_CODE} (may need a few seconds to propagate)"
+      fi
+
+    # Tag the release on GitLab
     - |
       TAG_EXISTS=$(curl --silent --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
         "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/repository/tags/v${VERSION}" \
         | grep -c '"name"' || true)
       if [ "$TAG_EXISTS" -gt 0 ]; then
-        echo "Tag v${VERSION} already exists, skipping release"
-        exit 0
+        echo "Tag v${VERSION} already exists, skipping"
+      else
+        curl -s --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "{\"tag_name\": \"v${VERSION}\", \"ref\": \"main\", \"message\": \"PAL v${VERSION}\"}" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/repository/tags" > /dev/null
+        echo "Tagged v${VERSION}"
       fi
-    - |
-      curl --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-        --header "Content-Type: application/json" \
-        --data "{
-          \"name\": \"PAL v${VERSION}\",
-          \"tag_name\": \"v${VERSION}\",
-          \"description\": \"PAL v${VERSION} release\",
-          \"assets\": {
-            \"links\": [
-              {\"name\": \"pal-linux-x64\",        \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64\",        \"filepath\": \"/pal-linux-x64\"},
-              {\"name\": \"pal-linux-x64.sha256\",  \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/pal-linux-x64.sha256\",  \"filepath\": \"/pal-linux-x64.sha256\"},
-              {\"name\": \"version.txt\",            \"url\": \"${PACKAGE_REGISTRY_URL}/${VERSION}/version.txt\",            \"filepath\": \"/version.txt\"}
-            ]
-          }
-        }" \
-        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"

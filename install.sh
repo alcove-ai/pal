@@ -8,7 +8,7 @@
 #
 set -euo pipefail
 
-GITLAB_BASE="https://gitlab.cee.redhat.com/hosted-pulp/pal"
+CONTENT_BASE="https://packages.redhat.com/api/pulp-content/public-pal/pal"
 INSTALL_DIR="${HOME}/.local/bin"
 BINARY_NAME="pal"
 
@@ -49,19 +49,23 @@ ASSET_NAME="pal-${PLATFORM}"
 
 echo "pal: detected platform ${PLATFORM}"
 
-# --- Build download URL ---
+# --- Resolve version ---
 
 if [ -n "${VERSION}" ]; then
-  # Strip leading 'v' if present for the tag, then re-add
   VERSION="${VERSION#v}"
-  DOWNLOAD_URL="${GITLAB_BASE}/-/releases/v${VERSION}/downloads/${ASSET_NAME}"
-  CHECKSUM_URL="${GITLAB_BASE}/-/releases/v${VERSION}/downloads/${ASSET_NAME}.sha256"
   echo "pal: installing version v${VERSION}"
 else
-  DOWNLOAD_URL="${GITLAB_BASE}/-/releases/permalink/latest/downloads/${ASSET_NAME}"
-  CHECKSUM_URL="${GITLAB_BASE}/-/releases/permalink/latest/downloads/${ASSET_NAME}.sha256"
-  echo "pal: installing latest version"
+  echo "pal: fetching latest version..."
+  VERSION="$(curl -fsSL --connect-timeout 10 "${CONTENT_BASE}/latest/version.txt" 2>/dev/null || true)"
+  if [ -z "${VERSION}" ]; then
+    echo "Error: could not determine latest version" >&2
+    exit 1
+  fi
+  echo "pal: latest version is v${VERSION}"
 fi
+
+DOWNLOAD_URL="${CONTENT_BASE}/v${VERSION}/${ASSET_NAME}"
+CHECKSUM_URL="${CONTENT_BASE}/v${VERSION}/${ASSET_NAME}.sha256"
 
 # --- Download binary ---
 
@@ -69,9 +73,8 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "${TMPDIR}"' EXIT
 
 echo "pal: downloading binary..."
-if ! curl -fSL --connect-timeout 10 --max-time 120 -o "${TMPDIR}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
+if ! curl -fSL --connect-timeout 10 --max-time 300 -o "${TMPDIR}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
   echo "Error: failed to download binary from ${DOWNLOAD_URL}" >&2
-  echo "Make sure you are connected to the Red Hat VPN." >&2
   exit 1
 fi
 

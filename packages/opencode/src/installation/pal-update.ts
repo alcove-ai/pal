@@ -22,8 +22,8 @@ import * as Log from "@opencode-ai/core/util/log"
 
 const log = Log.create({ service: "pal-update" })
 
-const GITLAB_BASE = "https://gitlab.cee.redhat.com/hosted-pulp/pal"
-const VERSION_URL = `${GITLAB_BASE}/-/releases/permalink/latest/downloads/version.txt`
+const CONTENT_BASE = "https://packages.redhat.com/api/pulp-content/public-pal/pal"
+const VERSION_URL = `${CONTENT_BASE}/latest/version.txt`
 const METADATA_TIMEOUT_MS = 5_000
 const BINARY_TIMEOUT_MS = 120_000
 
@@ -156,8 +156,8 @@ export async function checkForUpdate(): Promise<void> {
       return
     }
 
-    const binaryUrl = `${GITLAB_BASE}/-/releases/v${remoteVersion}/downloads/${assetName}`
-    const checksumUrl = `${GITLAB_BASE}/-/releases/v${remoteVersion}/downloads/${assetName}.sha256`
+    const binaryUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}`
+    const checksumUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}.sha256`
 
     // Check if we can write to the current binary location
     const execPath = process.execPath
