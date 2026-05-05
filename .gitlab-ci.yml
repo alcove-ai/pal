@@ -93,28 +93,26 @@ publish:
       upload_file pal-linux-x64.sha256 "v${VERSION}/pal-linux-x64.sha256"
       upload_file version.txt          "v${VERSION}/version.txt"
 
-      # Remove old latest/version.txt before uploading new one
+      # Remove old latest/version.txt then upload new one.
+      # Query uses the repository's latest version to find existing content.
+      LATEST_VER_HREF="${PULP_BASE}${REPO_HREF}versions/latest/"
+      echo "Replacing latest/version.txt"
       OLD_HREFS=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
-        "${PULP_API}/content/file/files/?relative_path=latest/version.txt&repository_version=${REPO_HREF}versions/latest/" \
-        | python3 -c "import json,sys; hrefs=[r['pulp_href'] for r in json.load(sys.stdin).get('results',[])]; print('\n'.join(hrefs))")
+        "${PULP_API}/content/file/files/?relative_path=latest/version.txt&repository_version=${LATEST_VER_HREF}" \
+        2>/dev/null | python3 -c "
+import json,sys
+try:
+    hrefs=[r['pulp_href'] for r in json.load(sys.stdin).get('results',[])]
+    print('\n'.join(hrefs))
+except: pass
+" 2>/dev/null || true)
       if [ -n "${OLD_HREFS}" ]; then
-        echo "Removing old latest/version.txt"
         REMOVE_JSON=$(echo "${OLD_HREFS}" | python3 -c "import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")
-        TASK_HREF=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
+        curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
           -H "Content-Type: application/json" \
           -d "{\"remove_content_units\": ${REMOVE_JSON}}" \
-          "${PULP_BASE}${REPO_HREF}modify/" \
-          | python3 -c "import json,sys; print(json.load(sys.stdin).get('task',''))")
-        if [ -n "${TASK_HREF}" ]; then
-          for i in $(seq 1 30); do
-            STATE=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
-              "${PULP_BASE}${TASK_HREF}" \
-              | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))")
-            [ "${STATE}" = "completed" ] && echo "  done" && break
-            [ "${STATE}" = "failed" ] && echo "  FAILED" && break
-            sleep 2
-          done
-        fi
+          "${PULP_BASE}${REPO_HREF}modify/" > /dev/null 2>&1
+        sleep 3
       fi
 
       upload_file version.txt          "latest/version.txt"
