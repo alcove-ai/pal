@@ -40,7 +40,7 @@ build-linux-x64:
     - *generate_snapshot
     - |
       export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile \
+      bun build --compile --conditions=browser \
         --target=bun-linux-x64 \
         --define "OPENCODE_VERSION='${VERSION}'" \
         --define "OPENCODE_CHANNEL='latest'" \
@@ -68,7 +68,7 @@ build-linux-arm64:
     - *generate_snapshot
     - |
       export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile \
+      bun build --compile --conditions=browser \
         --target=bun-linux-arm64 \
         --define "OPENCODE_VERSION='${VERSION}'" \
         --define "OPENCODE_CHANNEL='latest'" \
@@ -93,7 +93,7 @@ build-darwin-arm64:
     - *generate_snapshot
     - |
       export PATH="${HOME:-/tmp/ci-home}/.bun/bin:$PATH"
-      bun build --compile \
+      bun build --compile --conditions=browser \
         --target=bun-darwin-arm64 \
         --define "OPENCODE_VERSION='${VERSION}'" \
         --define "OPENCODE_CHANNEL='latest'" \
