@@ -99,13 +99,9 @@ publish:
       echo "Replacing latest/version.txt"
       OLD_HREFS=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
         "${PULP_API}/content/file/files/?relative_path=latest/version.txt&repository_version=${LATEST_VER_HREF}" \
-        2>/dev/null | python3 -c "
-import json,sys
-try:
-    hrefs=[r['pulp_href'] for r in json.load(sys.stdin).get('results',[])]
-    print('\n'.join(hrefs))
-except: pass
-" 2>/dev/null || true)
+        2>/dev/null | python3 -c "import json,sys
+try: hrefs=[r['pulp_href'] for r in json.load(sys.stdin).get('results',[])]; print('\n'.join(hrefs))
+except: pass" 2>/dev/null || true)
       if [ -n "${OLD_HREFS}" ]; then
         REMOVE_JSON=$(echo "${OLD_HREFS}" | python3 -c "import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")
         curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
