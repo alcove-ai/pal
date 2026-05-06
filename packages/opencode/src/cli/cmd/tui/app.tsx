@@ -923,8 +923,8 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       <Show when={Flag.OPENCODE_SHOW_TTFD}>
         <TimeToFirstDraw />
       </Show>
-      <TabBar activeTab={activeTab()} />
       <Show when={ready()}>
+        <TabBar activeTab={activeTab()} />
         <Switch>
           <Match when={activeTab() === 1}>
             <Switch>
