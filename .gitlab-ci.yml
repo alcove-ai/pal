@@ -12,6 +12,10 @@ variables:
 build:
   stage: build
   tags: [itup-alm-x86]
+  variables:
+    KUBERNETES_MEMORY_REQUEST: "2Gi"
+    KUBERNETES_MEMORY_LIMIT: "3Gi"
+    KUBERNETES_CPU_REQUEST: "2"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
@@ -38,7 +42,7 @@ build:
     # Generate models snapshot
     - cd packages/opencode && bun run script/generate.ts && cd ../..
 
-    # Build linux-x64 (10min timeout, process.exit forces clean exit)
+    # Build linux-x64 (needs ~1GB RAM, set via KUBERNETES_MEMORY_REQUEST)
     - cd packages/opencode && OPENCODE_VERSION="${VERSION}" OPENCODE_CHANNEL="latest" bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64 && cd ../..
     - sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
 
