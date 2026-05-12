@@ -2,6 +2,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
 import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
+import { PalConfig, type GitLabRepoEntry } from "@/config/pal-config"
 
 const log = Log.create({ service: "activity-feed.gitlab" })
 
@@ -10,19 +11,9 @@ interface McpTool {
   execute?: (input: any, options?: any) => any
 }
 
-// --- Default repos to poll ---
+// --- Default repos to poll (empty by default; configure via pal.json) ---
 
-interface GitLabRepoConfig {
-  projectId: string
-  projectPath: string
-}
-
-const DEFAULT_REPOS: GitLabRepoConfig[] = [
-  { projectId: "13582", projectPath: "service/app-interface" },
-  { projectId: "188751", projectPath: "hosted-pulp/pulp-docs" },
-  { projectId: "181648", projectPath: "hosted-pulp/akamai-packages.redhat.com" },
-  { projectId: "193708", projectPath: "hosted-pulp/decko-opinionated-agent" },
-]
+const DEFAULT_REPOS: GitLabRepoEntry[] = []
 
 // --- Interfaces for GitLab MCP responses ---
 
@@ -116,7 +107,7 @@ function parseToolResult<T>(result: unknown): T | null {
 // --- Adapter ---
 
 export interface GitLabAdapterConfig {
-  repos?: GitLabRepoConfig[]
+  repos?: GitLabRepoEntry[]
   agentDetector?: AgentDetectorConfig
 }
 
@@ -124,7 +115,8 @@ export function createGitLabAdapter(
   mcpTools: () => Promise<Record<string, McpTool> | undefined>,
   config?: GitLabAdapterConfig,
 ): PollingAdapter {
-  const repos = config?.repos ?? DEFAULT_REPOS
+  const palConfig = PalConfig.get().activityFeed?.gitlab
+  const repos = config?.repos ?? palConfig?.repos ?? DEFAULT_REPOS
   const agentConfig = config?.agentDetector
 
   return {
@@ -196,7 +188,7 @@ export function createGitLabAdapter(
 }
 
 async function pollRepo(
-  repo: GitLabRepoConfig,
+  repo: GitLabRepoEntry,
   listMRsTool: McpTool,
   getPipelineTool: McpTool | null,
   getReviewsTool: McpTool | null,

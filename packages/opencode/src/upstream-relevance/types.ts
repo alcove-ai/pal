@@ -36,6 +36,8 @@ export interface UpstreamConfig {
     /** Model to use (default claude-sonnet-4-5-20250514) */
     model: string
   }
+  /** Optional deployment context string for Layer 2 LLM classification */
+  deploymentContext?: string
 }
 
 /** An upstream event that can be classified */

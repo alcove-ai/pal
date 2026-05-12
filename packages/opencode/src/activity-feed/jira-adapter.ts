@@ -2,6 +2,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
 import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
+import * as PalConfig from "@/config/pal-config"
 
 /** Minimal tool interface matching what MCP.tools() returns */
 interface McpTool {
@@ -78,7 +79,14 @@ function extractPrUrls(text: string | null | undefined): string[] {
 }
 
 function issueUrl(key: string): string {
-  return `https://redhat.atlassian.net/browse/${key}`
+  const config = PalConfig.get()
+  const baseUrl = config.activityFeed?.jira?.url
+  if (baseUrl) {
+    const normalized = baseUrl.replace(/\/+$/, "")
+    return `${normalized}/browse/${key}`
+  }
+  // Fallback: generic Jira-style URL using the key alone
+  return key
 }
 
 function parseTimestamp(dateStr: string | null | undefined): number {
@@ -123,9 +131,20 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
       }
 
       try {
+        const config = PalConfig.get()
+        const jiraProject = config.activityFeed?.jira?.project
+        const updatedSince = config.activityFeed?.jira?.updatedSince ?? "-3m"
+
+        const jqlParts: string[] = []
+        if (jiraProject) {
+          jqlParts.push(`project = ${jiraProject}`)
+        }
+        jqlParts.push(`updated >= "${updatedSince}"`)
+        const jql = jqlParts.join(" AND ") + " ORDER BY updated DESC"
+
         const result = await searchTool.execute(
           {
-            jql: 'project = PULP AND updated >= "-3m" ORDER BY updated DESC',
+            jql,
             fields: "summary,status,assignee,priority,labels,created,updated,creator,description,comment",
             expand: "changelog",
             limit: 50,

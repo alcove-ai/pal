@@ -8,6 +8,7 @@
  */
 
 import * as Log from "@opencode-ai/core/util/log"
+import * as PalConfig from "@/config/pal-config"
 import { Database } from "@/storage/db"
 import { IssueProcessStateTable, SkipTrackingTable } from "./process.sql"
 import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
@@ -90,6 +91,16 @@ export interface Interface {
   readonly getComplianceSummary: () => Effect.Effect<ComplianceSummary>
   /** Get the process state for a specific issue */
   readonly getIssueState: (issueKey: string) => Effect.Effect<{ phase: Phase; problemQuality: string; scopeQuality: string; exemptionReason: string | null; skipCount: number } | null>
+}
+
+function buildJiraFallbackUrl(issueKey: string): string {
+  const config = PalConfig.get()
+  const baseUrl = config.activityFeed?.jira?.url
+  if (baseUrl) {
+    const normalized = baseUrl.replace(/\/+$/, "")
+    return `${normalized}/browse/${issueKey}`
+  }
+  return issueKey
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Process") {}
@@ -418,7 +429,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service> = Layer.effect(
           phase: gap.phase as Phase,
           weight: PROCESS_GAP_WEIGHT,
           title: eventInfo?.title ?? gap.issue_key,
-          url: eventInfo?.url ?? `https://redhat.atlassian.net/browse/${gap.issue_key}`,
+          url: eventInfo?.url ?? buildJiraFallbackUrl(gap.issue_key),
         })
       }
 

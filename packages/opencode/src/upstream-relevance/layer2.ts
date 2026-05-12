@@ -75,38 +75,28 @@ export function canCallLayer2(config: UpstreamConfig): boolean {
   return true
 }
 
-function loadDeploymentContext(): string {
+function loadDeploymentContext(config: UpstreamConfig): string {
+  // 1. Check config-provided deployment context first
+  if (config.deploymentContext) {
+    return config.deploymentContext
+  }
+
+  // 2. Try reading deployment-context.md from disk
   const contextPath = path.join(process.cwd(), "deployment-context.md")
-  if (!existsSync(contextPath)) {
-    return DEFAULT_DEPLOYMENT_CONTEXT
+  if (existsSync(contextPath)) {
+    try {
+      return readFileSync(contextPath, "utf-8")
+    } catch {
+      // fall through to default
+    }
   }
-  try {
-    return readFileSync(contextPath, "utf-8")
-  } catch {
-    return DEFAULT_DEPLOYMENT_CONTEXT
-  }
+
+  // 3. Generic fallback
+  return DEFAULT_DEPLOYMENT_CONTEXT
 }
 
-const DEFAULT_DEPLOYMENT_CONTEXT = `# Hosted Pulp Deployment Context
-
-Hosted Pulp is a managed software package hosting service on packages.redhat.com.
-It serves RPM, Python, Maven, OSTree, and container content to Red Hat product teams.
-
-## What matters to us:
-- Security fixes and CVEs in upstream Pulp components
-- Breaking API changes that affect our deployment
-- Performance regressions in content serving or sync operations
-- Bug fixes for features we use (RPM, Python, File, Container plugins)
-- Changes to database migrations or schema
-- Changes to the REST API surface
-
-## What is less relevant:
-- CI/CD configuration changes in upstream repos
-- Documentation-only changes (unless API docs)
-- Test-only changes
-- Changelog/towncrier fragment additions
-- Cosmetic refactors that don't change behavior
-`
+const DEFAULT_DEPLOYMENT_CONTEXT =
+  "No deployment context configured. Classify based on the event's labels, title, and description."
 
 /**
  * Layer 2: LLM-based classifier.
@@ -121,7 +111,7 @@ export async function classifyLayer2(
     return null
   }
 
-  const deploymentContext = loadDeploymentContext()
+  const deploymentContext = loadDeploymentContext(config)
 
   const prompt = buildPrompt(event, deploymentContext)
 

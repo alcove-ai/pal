@@ -2,27 +2,22 @@ import * as Log from "@opencode-ai/core/util/log"
 import type { PollingAdapter, ActivityEvent, ActivityEventType } from "./types"
 import { Identifier } from "@/id/id"
 import { detectActorType, type AgentDetectorConfig } from "./agent-detector"
+import { PalConfig } from "@/config/pal-config"
 
 const log = Log.create({ service: "activity-feed.github" })
 
 const JIRA_KEY_REGEX = /[A-Z]+-\d+/g
 
-/** Repos where we track all activity */
-const DEFAULT_TIER1_REPOS = ["pulp/pulp-service", "pulp/pulpcore"]
+/** Repos where we track all activity (empty by default; configure via pal.json) */
+const DEFAULT_TIER1_REPOS: string[] = []
 
-/** Repos where we track PRs/issues only */
-const DEFAULT_TIER2_REPOS = [
-  "pulp/pulp_rpm",
-  "pulp/pulp_file",
-  "pulp/pulp_certguard",
-  "pulp/pulp-cli",
-  "pulp/pulp-openapi-generator",
-]
+/** Repos where we track PRs/issues only (empty by default; configure via pal.json) */
+const DEFAULT_TIER2_REPOS: string[] = []
 
-/** Repos where we track mentions/review requests only */
-const DEFAULT_TIER3_REPOS = ["pulp/pulp_ansible", "pulp/pulp_container", "pulp/pulp_deb", "pulp/pulp_python"]
+/** Repos where we track mentions/review requests only (empty by default; configure via pal.json) */
+const DEFAULT_TIER3_REPOS: string[] = []
 
-const BOT_IGNORE_LIST = ["dependabot[bot]", "renovate[bot]", "github-actions[bot]"]
+const DEFAULT_BOT_IGNORE_LIST = ["dependabot[bot]", "renovate[bot]", "github-actions[bot]"]
 
 /** Notification reasons we care about */
 const TRACKED_REASONS = new Set(["assign", "review_requested", "mention", "comment", "team_mention", "author"])
@@ -129,7 +124,7 @@ function extractJiraKeys(text: string | null | undefined): string[] {
 
 function isBot(login: string | null | undefined): boolean {
   if (!login) return false
-  return BOT_IGNORE_LIST.includes(login)
+  return DEFAULT_BOT_IGNORE_LIST.includes(login)
 }
 
 function repoTier(
@@ -193,11 +188,12 @@ export interface GitHubAdapterConfig {
 }
 
 export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapter {
-  const tier1 = config?.tier1Repos ?? DEFAULT_TIER1_REPOS
-  const tier2 = config?.tier2Repos ?? DEFAULT_TIER2_REPOS
-  const tier3 = config?.tier3Repos ?? DEFAULT_TIER3_REPOS
-  const bots = new Set(config?.botIgnoreList ?? BOT_IGNORE_LIST)
-  const upstreamOrg = config?.upstreamPollOrg ?? "pulp"
+  const palConfig = PalConfig.get().activityFeed?.github
+  const tier1 = config?.tier1Repos ?? palConfig?.repos?.tier1 ?? DEFAULT_TIER1_REPOS
+  const tier2 = config?.tier2Repos ?? palConfig?.repos?.tier2 ?? DEFAULT_TIER2_REPOS
+  const tier3 = config?.tier3Repos ?? palConfig?.repos?.tier3 ?? DEFAULT_TIER3_REPOS
+  const bots = new Set(config?.botIgnoreList ?? palConfig?.botIgnoreList ?? DEFAULT_BOT_IGNORE_LIST)
+  const upstreamOrg = config?.upstreamPollOrg ?? palConfig?.upstreamPollOrg ?? undefined
   const agentConfig = config?.agentDetector
 
   let pollCount = 0
@@ -228,7 +224,7 @@ export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapte
       events.push(...prEvents)
 
       // 3. Upstream review requests (every 5min ~ every 3rd poll at 90s base)
-      if (pollCount % 3 === 1) {
+      if (upstreamOrg && pollCount % 3 === 1) {
         const upstreamEvents = await pollUpstreamReviewRequests(upstreamOrg, bots, agentConfig)
         events.push(...upstreamEvents)
       }

@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: UpstreamConfig = {
   review: {
     labels: ["bug", "bugfix", "regression", "performance"],
     keywords: ["fix:", "bugfix:", "regression", "performance degradation"],
-    paths: ["pulpcore/app/", "pulpcore/content/", "pulp_rpm/", "pulp_file/"],
+    paths: [],
   },
   watch: {
     labels: ["enhancement", "feature", "refactor"],
@@ -167,6 +167,7 @@ export function loadConfig(): UpstreamConfig {
             }
           : {}),
       },
+      ...(typeof parsed.deploymentContext === "string" ? { deploymentContext: parsed.deploymentContext } : {}),
     }
 
     log.info("loaded upstream.yaml config", { path: configPath })
