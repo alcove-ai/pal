@@ -72,7 +72,7 @@ const result = await Bun.build({
   splitting: true,
   compile: {
     autoloadBunfig: false,
-    autoloadDotenv: false,
+    autoloadDotenv: true,
     autoloadTsconfig: true,
     autoloadPackageJson: true,
     target: target as any,
