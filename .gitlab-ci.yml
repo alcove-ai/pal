@@ -13,9 +13,8 @@ build:
   stage: build
   tags: [itup-alm-x86]
   variables:
-    KUBERNETES_MEMORY_REQUEST: "2Gi"
-    KUBERNETES_MEMORY_LIMIT: "3Gi"
-    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_MEMORY_REQUEST: "1536Mi"
+    KUBERNETES_MEMORY_LIMIT: "2Gi"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
