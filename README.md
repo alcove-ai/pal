@@ -6,7 +6,7 @@ Forked from [opencode](https://github.com/anomalyco/opencode).
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/pal/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/alcove-ai/pal/main/install.sh | bash
 ```
 
 That's it. A single binary lands in `~/.local/bin/pal`. PAL auto-updates
@@ -15,7 +15,7 @@ on every launch — no need to re-run the installer.
 To install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/pal/main/install.sh | bash -s v0.2.0
+curl -fsSL https://raw.githubusercontent.com/alcove-ai/pal/main/install.sh | bash -s v0.2.0
 ```
 
 ### Prerequisites
