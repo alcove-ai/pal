@@ -12,9 +12,12 @@ variables:
 build:
   stage: build
   tags: [itup-alm-x86]
-  variables:
-    KUBERNETES_MEMORY_REQUEST: "1536Mi"
-    KUBERNETES_MEMORY_LIMIT: "2Gi"
+  timeout: 10m
+  retry:
+    max: 2
+    when:
+      - script_failure
+      - job_execution_timeout
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   script:
