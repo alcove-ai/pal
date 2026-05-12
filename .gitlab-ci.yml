@@ -1,3 +1,6 @@
+# TODO: This GitLab CI pipeline will be replaced by GitHub Actions
+# once the repository migrates to GitHub.
+
 stages:
   - build
   - publish

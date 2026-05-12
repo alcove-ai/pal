@@ -9,9 +9,9 @@ const log = Log.create({ service: "config.pal" })
 // --- Activity feed: Jira ---
 
 export interface JiraConfig {
-  /** Base URL for the Jira instance (e.g. "https://redhat.atlassian.net") */
+  /** Base URL for the Jira instance (e.g. "https://your-org.atlassian.net") */
   url?: string
-  /** JQL project filter (e.g. "PULP") */
+  /** JQL project filter (e.g. "MYPROJECT") */
   project?: string
   /** JQL time range for polling (e.g. "-3m") */
   updatedSince?: string

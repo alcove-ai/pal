@@ -24,6 +24,5 @@ TypeScript, Bun 1.3.13, Effect-TS, SolidJS + @opentui/solid (TUI), SQLite + Driz
 |------|---------|
 | `domains.example.json` | Domain health configuration template (copy to `.opencode/domains.json`) |
 | `upstream.yaml` | Upstream relevance classification rules (must-act/review/watch/noise) |
-| `deployment-context.md` | Deployment environment description for LLM context |
 | `turbo.json` | Turborepo task configuration |
 | `bunfig.toml` | Bun package manager settings |

@@ -25,7 +25,7 @@ Industry research confirms this is widespread: PR review times increased 91% eve
 
 ### Full design document
 
-See `~/devel/pulp/human-agent-team-coordination.md` for the complete problem analysis including research references (HBR, METR studies, Apache lazy consensus, stigmergy in software development, coordination cost theory).
+The design draws on research from HBR and METR studies on agentic productivity, Apache lazy consensus, stigmergy in software development, and coordination cost theory.
 
 ## Project objective
 
@@ -37,7 +37,7 @@ open-source AI coding agent with features purpose-built for a product team:
 - Tracks domain health across team-owned areas
 - Filters upstream open-source activity for deployment relevance
 - Enforces a problem-first process (problem statement before solution scope)
-- Auto-updates via GitLab Releases
+- Auto-updates from the release repository
 
 PAL is a **developer tool**, not an operational service. It runs locally on each
 team member's workstation.
@@ -69,8 +69,8 @@ team member's workstation.
 - **Process Facilitation** (`src/process/`) -- Mechanical assessor that checks
   Jira issues for problem statements and scope. Phases: `needs_problem` ->
   `has_problem` -> `needs_scope` (epics only) -> `ready`. No LLM calls.
-- **Auto-update** (`src/installation/pal-update.ts`) -- Checks GitLab Releases
-  for newer versions and downloads the platform-appropriate binary.
+- **Auto-update** (`src/installation/pal-update.ts`) -- Checks for newer
+  versions and downloads the platform-appropriate binary.
 
 ### Storage
 
@@ -100,8 +100,7 @@ failures (max 300s). Poll state is persisted so restarts resume cleanly.
 | `packages/script/` | Build and release scripts |
 | `domains.example.json` | Domain configuration template |
 | `upstream.yaml` | Upstream relevance rules |
-| `deployment-context.md` | Deployment context for LLM prompts |
-| `install.sh` | Installer script (downloads from GitLab Releases) |
+| `install.sh` | Installer script (downloads release binaries) |
 
 ## Tech stack
 

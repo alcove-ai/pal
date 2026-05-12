@@ -5,10 +5,8 @@ Forked from [opencode](https://github.com/anomalyco/opencode).
 
 ## Install
 
-**Requires Red Hat VPN.**
-
 ```bash
-curl -fsSL https://gitlab.cee.redhat.com/hosted-pulp/pal/-/raw/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/pal/main/install.sh | bash
 ```
 
 That's it. A single binary lands in `~/.local/bin/pal`. PAL auto-updates
@@ -17,13 +15,12 @@ on every launch — no need to re-run the installer.
 To install a specific version:
 
 ```bash
-curl -fsSL https://gitlab.cee.redhat.com/hosted-pulp/pal/-/raw/main/install.sh | bash -s v0.2.0
+curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/pal/main/install.sh | bash -s v0.2.0
 ```
 
 ### Prerequisites
 
 - Linux (x64 or arm64) or macOS (Apple Silicon)
-- Red Hat VPN connection (GitLab is internal)
 - `~/.local/bin` on your `PATH` (the installer will tell you if it's not)
 - An AI provider API key configured in `~/.opencode/config.json` (PAL prompts on first run)
 

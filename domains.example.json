@@ -4,7 +4,7 @@
       "name": "example-domain",
       "jira_components": ["component-name"],
       "jira_labels": ["area/example"],
-      "repo_globs": ["pulp/pulp-example-*"],
+      "repo_globs": ["org/example-repo-*"],
       "owner": "jdoe"
     }
   ]

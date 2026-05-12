@@ -33,3 +33,10 @@ tsconfig.tsbuildinfo
 # Build-generated files
 packages/opencode/src/provider/models-snapshot.js
 packages/opencode/src/provider/models-snapshot.d.ts
+
+# Team-specific config (not for public repo)
+deployment-context.md
+*.db
+
+# Claude Code artifacts
+.claude/
