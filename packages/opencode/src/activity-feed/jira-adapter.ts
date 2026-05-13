@@ -134,6 +134,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
         const config = PalConfig.get()
         const jiraProject = config.activityFeed?.jira?.project
         const updatedSince = config.activityFeed?.jira?.updatedSince ?? "-3m"
+        log.info("jira poll config", { project: jiraProject ?? "(all)", updatedSince, configPath: "pal.json" })
 
         const jqlParts: string[] = []
         if (jiraProject) {
@@ -141,6 +142,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
         }
         jqlParts.push(`updated >= "${updatedSince}"`)
         const jql = jqlParts.join(" AND ") + " ORDER BY updated DESC"
+        log.info("jira poll executing", { jql, tool: searchToolName })
 
         const result = await searchTool.execute(
           {
@@ -157,11 +159,15 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           return []
         }
 
+        log.info("jira poll raw result type", { type: typeof result, keys: Object.keys(result ?? {}).slice(0, 5) })
+
         const content = extractContent(result)
         if (!content) {
-          log.warn("could not extract content from jira_search result")
+          log.warn("could not extract content from jira_search result", { resultPreview: JSON.stringify(result).slice(0, 300) })
           return []
         }
+
+        log.info("jira poll content extracted", { contentType: typeof content, length: String(content).length, preview: String(content).slice(0, 200) })
 
         let parsed: { issues?: JiraIssue[]; total?: number }
         try {
@@ -172,6 +178,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
         }
 
         const issues = parsed.issues ?? []
+        log.info("jira poll parsed", { issueCount: issues.length, total: parsed.total })
         if (issues.length > 100) {
           log.warn("anomaly guard: capping issues at 100", { total: issues.length })
           issues.length = 100
