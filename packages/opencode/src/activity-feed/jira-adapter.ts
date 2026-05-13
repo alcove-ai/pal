@@ -186,7 +186,13 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           return []
         }
 
-        const issues = parsed.issues ?? []
+        const rawIssues = parsed.issues ?? []
+        // MCP-Atlassian returns fields at top level; normalize to { key, fields: {...} }
+        const issues = rawIssues.map((issue: any) => {
+          if (issue.fields) return issue
+          const { id, key, ...fields } = issue
+          return { id, key, fields }
+        })
         log.info("jira poll parsed", { issueCount: issues.length, total: parsed.total })
         if (issues.length > 100) {
           log.warn("anomaly guard: capping issues at 100", { total: issues.length })
@@ -196,8 +202,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
         const events: ActivityEvent[] = []
 
         for (const issue of issues) {
-          if (!issue.fields) continue
-          const prUrls = extractPrUrls(issue.fields.description ?? "")
+          const prUrls = extractPrUrls(issue.fields?.description ?? "")
           // Also extract from comments
           for (const comment of issue.fields.comment?.comments ?? []) {
             prUrls.push(...extractPrUrls(comment.body))
