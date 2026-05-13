@@ -28,7 +28,7 @@ let _completedVersion: string | null = null
 
 export function onUpdateComplete(cb: UpdateListener): void {
   if (_completedVersion) cb(_completedVersion)
-  else _listeners.push(cb)
+  _listeners.push(cb)
 }
 
 const CONTENT_BASE = "https://packages.redhat.com/api/pulp-content/public-pal/pal"
@@ -231,10 +231,16 @@ export async function checkForUpdate(): Promise<void> {
 
     _completedVersion = remoteVersion
     for (const cb of _listeners) cb(remoteVersion)
-    _listeners.length = 0
     log.info("auto-update complete", { version: remoteVersion })
   } catch (e) {
     // Catch-all: never let update check crash the app
     log.debug("update check failed", { error: e instanceof Error ? e.message : String(e) })
   }
+}
+
+const UPDATE_CHECK_INTERVAL_MS = 10 * 60 * 1000
+
+export function startPeriodicUpdateCheck(): void {
+  checkForUpdate().catch(() => {})
+  setInterval(() => checkForUpdate().catch(() => {}), UPDATE_CHECK_INTERVAL_MS)
 }

@@ -12,7 +12,7 @@ import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
-import { checkForUpdate } from "./installation/pal-update"
+import { startPeriodicUpdateCheck } from "./installation/pal-update"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
@@ -116,8 +116,8 @@ const cli = yargs(args)
       run_id: processMetadata.runID,
     })
 
-    // Fire-and-forget auto-update check (non-blocking)
-    checkForUpdate().catch(() => {})
+    // Periodic auto-update check (every 10 min, non-blocking)
+    startPeriodicUpdateCheck()
 
     const marker = path.join(Global.Path.data, "opencode.db")
     if (!(await Filesystem.exists(marker))) {
