@@ -196,7 +196,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
         const events: ActivityEvent[] = []
 
         for (const issue of issues) {
-          const prUrls = extractPrUrls(issue.fields.description)
+          if (!issue.fields) continue
+          const prUrls = extractPrUrls(issue.fields.description ?? "")
           // Also extract from comments
           for (const comment of issue.fields.comment?.comments ?? []) {
             prUrls.push(...extractPrUrls(comment.body))
