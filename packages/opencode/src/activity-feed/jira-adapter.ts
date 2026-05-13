@@ -133,7 +133,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
       try {
         const config = PalConfig.get()
         const jiraProject = config.activityFeed?.jira?.project
-        const updatedSince = config.activityFeed?.jira?.updatedSince ?? "-3m"
+        const updatedSince = config.activityFeed?.jira?.updatedSince ?? "-90d"
         log.info("jira poll config", { project: jiraProject ?? "(all)", updatedSince, configPath: "pal.json" })
 
         const jqlParts: string[] = []
