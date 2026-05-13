@@ -364,6 +364,10 @@ function buildChangelogSummary(field: string, item: ChangelogItem): string {
 function extractContent(result: unknown): unknown {
   if (!result || typeof result !== "object") return result
   const r = result as Record<string, unknown>
+  // MCP responses may have structuredContent (preferred) or content[].text
+  if ("structuredContent" in r && r.structuredContent) {
+    return r.structuredContent
+  }
   if ("content" in r && Array.isArray(r.content)) {
     for (const item of r.content) {
       if (item && typeof item === "object" && "text" in item) {
