@@ -366,7 +366,9 @@ function extractContent(result: unknown): unknown {
   const r = result as Record<string, unknown>
   // MCP responses may have structuredContent (preferred) or content[].text
   if ("structuredContent" in r && r.structuredContent) {
-    return r.structuredContent
+    const sc = r.structuredContent as Record<string, unknown>
+    if (typeof sc.result === "string") return sc.result
+    return sc
   }
   if ("content" in r && Array.isArray(r.content)) {
     for (const item of r.content) {
