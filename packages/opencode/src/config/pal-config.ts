@@ -103,6 +103,8 @@ function resolveConfigPath(): string {
     const dir = Instance.directory
     return path.join(dir, ".opencode", "pal.json")
   } catch {
+    const cwdPath = path.join(process.cwd(), ".opencode", "pal.json")
+    if (fsNode.existsSync(cwdPath)) return cwdPath
     return path.join(Global.Path.config, "pal.json")
   }
 }
