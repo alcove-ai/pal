@@ -159,7 +159,16 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           return []
         }
 
-        log.info("jira poll raw result type", { type: typeof result, keys: Object.keys(result ?? {}).slice(0, 5) })
+        const resultObj = result as Record<string, unknown>
+        log.info("jira poll raw result type", {
+          type: typeof result,
+          keys: Object.keys(resultObj).slice(0, 5),
+          isError: resultObj.isError,
+          contentLength: Array.isArray(resultObj.content) ? resultObj.content.length : "not-array",
+          contentFirstItem: Array.isArray(resultObj.content) ? JSON.stringify(resultObj.content[0]).slice(0, 200) : "n/a",
+          hasStructuredContent: "structuredContent" in resultObj,
+          structuredContentPreview: resultObj.structuredContent ? JSON.stringify(resultObj.structuredContent).slice(0, 200) : "n/a",
+        })
 
         const content = extractContent(result)
         if (!content) {
