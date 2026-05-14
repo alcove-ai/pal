@@ -6,7 +6,6 @@ import * as Log from "@opencode-ai/core/util/log"
 import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
@@ -88,7 +87,16 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("upgrade", {
+    describe: "check for updates before launching",
+    type: "boolean",
+  })
   .middleware(async (opts) => {
+    if (opts.upgrade) {
+      const { checkForUpdate } = await import("./installation/pal-update")
+      await checkForUpdate({ verbose: true })
+    }
+
     if (opts.pure) {
       process.env.OPENCODE_PURE = "1"
     }
@@ -168,7 +176,7 @@ const cli = yargs(args)
   .command(ConsoleCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)
-  .command(UpgradeCommand)
+
   .command(UninstallCommand)
   .command(ServeCommand)
   .command(WebCommand)
