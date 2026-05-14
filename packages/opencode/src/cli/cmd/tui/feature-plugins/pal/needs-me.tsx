@@ -1,5 +1,5 @@
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
-import { useTerminalDimensions } from "@opentui/solid"
+import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "@tui/context/theme"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
 import { Database } from "@/storage/db"
@@ -36,11 +36,7 @@ function scoreColor(score: number, theme: any): string {
 }
 
 function loadRecentEvents(): ActivityEvent[] {
-  try {
-    const all = Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(500).all() as ActivityEvent[])
-    // Only include own-mode events (mode === "own" or mode === null/undefined); watch-mode events should not appear in Needs Me
-    return all.filter((e) => { const mode = (e as any).mode; return mode === "own" || mode === null || mode === undefined })
-  } catch { return [] }
+  try { return Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(500).all() as ActivityEvent[]) } catch { return [] }
 }
 function getDismissedKeys(): Set<string> {
   try { return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key }).from(DismissedEventTable).where(eq(DismissedEventTable.action, "dismiss")).all(); return new Set(rows.map((r) => r.work_item_key)) }) } catch { return new Set() }
@@ -67,7 +63,7 @@ function computeFilteredQueue(config: NeedsMeConfig): NeedsMeItem[] {
   return items.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
 }
 
-function NeedsMeView() {
+function NeedsMeView(props: { api: TuiPluginApi }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const [queue, setQueue] = createSignal<NeedsMeItem[]>([])
@@ -75,7 +71,11 @@ function NeedsMeView() {
   const [overflowAlert, setOverflowAlert] = createSignal(false)
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
   const [scrollOffset, setScrollOffset] = createSignal(0)
+  const [selectedIndex, setSelectedIndex] = createSignal(0)
   const config: NeedsMeConfig = {}
+
+  // Track triage sessions: workItemKey -> sessionID
+  const triageSessionMap = new Map<string, string>()
 
   function refresh() {
     const items = computeFilteredQueue(config); setQueue(items); setLastChecked(Date.now())
@@ -85,6 +85,10 @@ function NeedsMeView() {
       if (since === null) { setOverflowSince(now); setOverflowAlert(false) }
       else if (now - since >= OVERFLOW_SUSTAIN_MS) { setOverflowAlert(true) }
     } else { setOverflowSince(null); setOverflowAlert(false) }
+    // Clamp selectedIndex to new queue bounds
+    if (items.length > 0 && selectedIndex() >= items.length) {
+      setSelectedIndex(items.length - 1)
+    }
   }
 
   function handleDismiss(item: NeedsMeItem) {
@@ -97,7 +101,90 @@ function NeedsMeView() {
     const snoozeUntil = Date.now() + SNOOZE_DURATIONS[duration]
     insertDismissal(item.workItemKey, item.ruleSource, "snooze", snoozeUntil); refresh()
   }
-  void handleDismiss; void handleSnooze
+  void handleSnooze
+
+  async function launchTriageSession(item: NeedsMeItem) {
+    // Resume existing triage session if one exists for this item
+    const existingSessionID = triageSessionMap.get(item.workItemKey)
+    if (existingSessionID) {
+      props.api.route.navigate("session", { sessionID: existingSessionID })
+      return
+    }
+
+    // Create new session
+    const result = await props.api.client.session.create({
+      title: `Triage: ${item.title.slice(0, 50)}`,
+    })
+    if (!result.data?.id) return
+
+    const sessionID = result.data.id
+    triageSessionMap.set(item.workItemKey, sessionID)
+
+    // Send initial context
+    await props.api.client.session.prompt({
+      sessionID,
+      parts: [{
+        type: "text" as const,
+        text: `Triage this item from my Needs Me queue:\n\nTitle: ${item.title}\nSource: ${item.sources.join(", ")}\nScore: ${item.score}\nTier: ${item.tier}\nBlocking: ${item.isBlocking}\nURL: ${item.url ?? "none"}\n\nPlease fetch the full details and tell me what action is needed.`,
+      }],
+    })
+
+    // Navigate to session
+    props.api.route.navigate("session", { sessionID })
+  }
+
+  // Keyboard handling
+  useKeyboard((evt) => {
+    // Don't handle keys when a dialog is open
+    if (props.api.ui.dialog.open) return
+    if (evt.defaultPrevented) return
+    if (evt.ctrl || evt.meta || evt.shift) return
+
+    const items = queue()
+    if (items.length === 0) return
+
+    const name = evt.name ?? ""
+
+    // Up / k: move selection up
+    if (name === "up" || name === "k") {
+      evt.preventDefault()
+      setSelectedIndex((idx) => Math.max(0, idx - 1))
+      // Adjust scroll to keep selection visible
+      const idx = selectedIndex()
+      const offset = scrollOffset()
+      if (idx < offset) setScrollOffset(idx)
+      return
+    }
+
+    // Down / j: move selection down
+    if (name === "down" || name === "j") {
+      evt.preventDefault()
+      setSelectedIndex((idx) => Math.min(items.length - 1, idx + 1))
+      // Adjust scroll to keep selection visible
+      const idx = selectedIndex()
+      const offset = scrollOffset()
+      const vh = visibleHeight()
+      // Each item takes 2 rows (title + breakdown)
+      if (idx >= offset + vh) setScrollOffset(idx - vh + 1)
+      return
+    }
+
+    // Enter: launch triage session
+    if (name === "return") {
+      evt.preventDefault()
+      const item = items[selectedIndex()]
+      if (item) void launchTriageSession(item)
+      return
+    }
+
+    // d: dismiss selected item
+    if (name === "d") {
+      evt.preventDefault()
+      const item = items[selectedIndex()]
+      if (item) handleDismiss(item)
+      return
+    }
+  })
 
   onMount(() => refresh())
   let refreshTimer: ReturnType<typeof setInterval> | undefined
@@ -126,6 +213,7 @@ function NeedsMeView() {
         </box>
       </Show>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
+        <box width={2} flexShrink={0} />
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Score</text></box>
         <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Tier</text></box>
         <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
@@ -142,20 +230,26 @@ function NeedsMeView() {
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">
           <For each={visibleItems().pinned}>
-            {(item) => {
+            {(item, index) => {
               const sc = () => scoreColor(item.score, theme)
-              const maxTitleWidth = () => Math.max(dimensions().width - 38, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
+              const isSelected = () => {
+                const offset = scrollOffset()
+                return index() + offset === selectedIndex()
+              }
+              const hasTriage = () => triageSessionMap.has(item.workItemKey)
               return (
-                <box flexDirection="column">
+                <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1}>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{isSelected() ? "> " : "  "}</text></box>
                     <box width={5} flexShrink={0}><text fg={sc()} attributes={TextAttributes.BOLD}>{String(item.score).padStart(3)}</text></box>
                     <box width={4} flexShrink={0}><text fg={item.tier === 1 ? (theme.warning ?? theme.primary) : theme.textMuted}>{tierBadge(item.tier)}</text></box>
                     <box width={4} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceBadges(item.sources)}</text></box>
                     <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.timestamp)}</text></box>
-                    <box flexGrow={1}><text fg={item.isBlocking ? (theme.error ?? theme.text) : theme.text}>{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box flexGrow={1}><text fg={item.isBlocking ? (theme.error ?? theme.text) : theme.text}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
-                  <box height={1} flexDirection="row" paddingLeft={6}>
+                  <box height={1} flexDirection="row" paddingLeft={8}>
                     <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.scoreBreakdown}</text>
                   </box>
                 </box>
@@ -168,13 +262,18 @@ function NeedsMeView() {
             </box>
           </Show>
         </box>
+        <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k ↑/↓ select  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss"}</text>
+        </box>
       </Show>
     </box>
   )
 }
 
-const tui: TuiPlugin = async () => {
-  registerTab({ key: 2, label: "Needs Me", order: 200, render: () => <NeedsMeView /> })
+const tui: TuiPlugin = async (api) => {
+  registerTab({ key: 2, label: "Needs Me", order: 200, render: () => <NeedsMeView api={api} /> })
 }
 
 const plugin: TuiPluginModule & { id: string } = { id, tui }
