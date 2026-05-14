@@ -122,7 +122,8 @@ async function fetchBinary(url: string): Promise<Buffer | null> {
  * Check for updates and auto-apply if possible.
  * This function is fire-and-forget; it never throws.
  */
-export async function checkForUpdate(): Promise<void> {
+export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<void> {
+  const say = (msg: string) => { if (opts?.verbose) process.stderr.write(msg) }
   try {
     // Skip if disabled via env
     if (process.env.PAL_NO_UPDATE_CHECK === "1") {
@@ -146,16 +147,19 @@ export async function checkForUpdate(): Promise<void> {
     // Fetch remote version
     const remoteVersion = await fetchText(VERSION_URL)
     if (!remoteVersion || !semver.valid(remoteVersion)) {
+      say("Could not reach update server\n")
       log.debug("could not fetch or parse remote version", { remoteVersion })
       return
     }
 
     // Compare
     if (!semver.gt(remoteVersion, current)) {
+      say(`Already up to date (v${current})\n`)
       log.debug("already up to date", { current, remote: remoteVersion })
       return
     }
 
+    say(`Update available: v${current} → v${remoteVersion}\n`)
     log.info("newer version available", { current, remote: remoteVersion })
 
     // Determine platform binary name
@@ -182,29 +186,36 @@ export async function checkForUpdate(): Promise<void> {
     }
 
     if (!writable) {
+      say(`Cannot write to ${execPath} — run with sudo or update manually:\n`)
+      say(`  curl -fSL "${binaryUrl}" -o "${execPath}" && chmod +x "${execPath}"\n`)
       log.info("binary not writable, manual update needed", { execPath })
       return
     }
 
     // Download binary and checksum
+    say("Downloading...")
     log.info("downloading update", { binaryUrl, checksumUrl })
     const [binaryData, checksumData] = await Promise.all([fetchBinary(binaryUrl), fetchText(checksumUrl)])
 
     if (!binaryData || !checksumData) {
+      say(" failed\n")
       log.info("failed to download binary or checksum", { hasBinary: !!binaryData, hasChecksum: !!checksumData })
       return
     }
+    say(" done\n")
 
     // Verify checksum
     const expectedHash = checksumData.trim()
     const actualHash = sha256(binaryData)
 
     if (expectedHash !== actualHash) {
+      say("Checksum mismatch — update aborted\n")
       log.warn("checksum mismatch, aborting update", { expected: expectedHash, actual: actualHash })
       return
     }
 
     // Atomic update: write to temp file then rename(2)
+    say("Applying update...")
     log.info("applying update", { execPath, size: binaryData.length })
     const tmpPath = execPath + `.update-${process.pid}`
     try {
@@ -218,10 +229,12 @@ export async function checkForUpdate(): Promise<void> {
         // ignore cleanup errors
       }
 
+      say(" failed\n")
       log.info("auto-update write failed", { error: e instanceof Error ? e.message : String(e) })
       return
     }
 
+    say(` updated to v${remoteVersion}\n`)
     _completedVersion = remoteVersion
     for (const cb of _listeners) cb(remoteVersion)
     log.info("auto-update complete, restart to apply", { version: remoteVersion })
