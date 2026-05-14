@@ -13,6 +13,7 @@ import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
+import { enrichWithProcessState, buildFacilitationPrompt, type ProcessEnrichedItem } from "@/needs-me/process-enrichment"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 30_000
@@ -34,6 +35,25 @@ function sourceBadges(sources: string[]): string {
 }
 function scoreColor(score: number, theme: any): string {
   if (score >= 60) return theme.error ?? theme.primary; if (score >= 35) return theme.warning ?? theme.primary; return theme.info ?? theme.primary
+}
+function phaseThemeColor(phaseColor: ProcessEnrichedItem["phaseColor"], theme: any): string {
+  switch (phaseColor) {
+    case "error": return theme.error ?? theme.primary
+    case "warning": return theme.warning ?? theme.primary
+    case "info": return theme.info ?? theme.primary
+    case "success": return theme.success ?? theme.primary
+    default: return theme.textMuted
+  }
+}
+function phaseLabel(phase: string | null): string {
+  if (!phase) return "—"
+  switch (phase) {
+    case "problem": return "Problem"
+    case "spec": return "Spec"
+    case "plan": return "Plan"
+    case "ready": return "Ready"
+    default: return phase
+  }
 }
 
 function loadRecentEvents(): ActivityEvent[] {
@@ -115,19 +135,20 @@ function detectProcessGaps(events: ActivityEvent[]): NeedsMeItem[] {
   return gaps
 }
 
-function computeFilteredQueue(config: NeedsMeConfig): NeedsMeItem[] {
+function computeFilteredQueue(config: NeedsMeConfig): ProcessEnrichedItem[] {
   const events = loadRecentEvents()
   const { items } = classify(events, config)
   const processGaps = detectProcessGaps(events)
   const allItems = [...items, ...processGaps].sort((a, b) => b.score - a.score)
   const dismissed = getDismissedKeys(); const snoozed = getSnoozedKeys(); const suppressed = getSuppressedRuleSources()
-  return allItems.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
+  const filtered = allItems.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
+  return enrichWithProcessState(filtered)
 }
 
 function NeedsMeView(props: { api: TuiPluginApi }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
-  const [queue, setQueue] = createSignal<NeedsMeItem[]>([])
+  const [queue, setQueue] = createSignal<ProcessEnrichedItem[]>([])
   const [lastChecked, setLastChecked] = createSignal<number | null>(null)
   const [overflowAlert, setOverflowAlert] = createSignal(false)
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
@@ -152,20 +173,24 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     }
   }
 
-  function handleDismiss(item: NeedsMeItem) {
+  function handleDismiss(enriched: ProcessEnrichedItem) {
+    const item = enriched.item
     insertDismissal(item.workItemKey, item.ruleSource, "dismiss", null)
     recordTriageDecision(item, "dismiss")
     const count = countDismissalsForRuleSource(item.ruleSource)
     if (count >= AUTO_SUPPRESS_THRESHOLD) upsertSuppression(item.ruleSource, count)
     refresh()
   }
-  function handleSnooze(item: NeedsMeItem, duration: SnoozeDuration) {
+  function handleSnooze(enriched: ProcessEnrichedItem, duration: SnoozeDuration) {
+    const item = enriched.item
     const snoozeUntil = Date.now() + SNOOZE_DURATIONS[duration]
     insertDismissal(item.workItemKey, item.ruleSource, "snooze", snoozeUntil); refresh()
   }
   void handleSnooze
 
-  async function launchTriageSession(item: NeedsMeItem) {
+  async function launchTriageSession(enriched: ProcessEnrichedItem) {
+    const item = enriched.item
+
     // Resume existing triage session if one exists for this item
     const existingSessionID = triageSessionMap.get(item.workItemKey)
     if (existingSessionID) {
@@ -174,8 +199,9 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     }
 
     // Create new session
+    const phaseSuffix = enriched.processPhase ? ` [${enriched.processPhase}]` : ""
     const result = await props.api.client.session.create({
-      title: `Triage: ${item.title.slice(0, 50)}`,
+      title: `Triage${phaseSuffix}: ${item.title.slice(0, 50)}`,
     })
     if (!result.data?.id) return
 
@@ -199,12 +225,15 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
 
     recordTriageDecision(item, "triage_started", undefined, sessionID)
 
+    // Build phase-specific facilitation prompt
+    const facilitationPrompt = buildFacilitationPrompt(enriched)
+
     // Send initial context
     await props.api.client.session.prompt({
       sessionID,
       parts: [{
         type: "text" as const,
-        text: `Triage this item from my Needs Me queue:
+        text: `${facilitationPrompt}
 
 Title: ${item.title}
 Source: ${item.sources.join(", ")}
@@ -212,9 +241,7 @@ Score: ${item.score} (${item.scoreBreakdown})
 Tier: ${item.tier} | Rule: ${item.rule}
 Blocking: ${item.isBlocking}
 URL: ${item.url ?? "none"}
-Actor: ${item.actor ?? "unknown"}${history}
-
-Please fetch the full details and tell me what action is needed.`,
+Actor: ${item.actor ?? "unknown"}${history}`,
       }],
     })
 
@@ -261,16 +288,16 @@ Please fetch the full details and tell me what action is needed.`,
     // Enter: launch triage session
     if (name === "return") {
       evt.preventDefault()
-      const item = items[selectedIndex()]
-      if (item) void launchTriageSession(item)
+      const enriched = items[selectedIndex()]
+      if (enriched) void launchTriageSession(enriched)
       return
     }
 
     // d: dismiss selected item
     if (name === "d") {
       evt.preventDefault()
-      const item = items[selectedIndex()]
-      if (item) handleDismiss(item)
+      const enriched = items[selectedIndex()]
+      if (enriched) handleDismiss(enriched)
       return
     }
   })
@@ -306,8 +333,9 @@ Please fetch the full details and tell me what action is needed.`,
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Score</text></box>
         <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Tier</text></box>
         <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
+        <box width={9} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Phase</text></box>
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
-        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title / Score Breakdown</text></box>
+        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title / Need</text></box>
         <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
       <Show when={queue().length > 0} fallback={
@@ -319,14 +347,16 @@ Please fetch the full details and tell me what action is needed.`,
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">
           <For each={visibleItems().pinned}>
-            {(item, index) => {
+            {(enriched, index) => {
+              const item = enriched.item
               const sc = () => scoreColor(item.score, theme)
-              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 50, 10)
               const isSelected = () => {
                 const offset = scrollOffset()
                 return index() + offset === selectedIndex()
               }
               const hasTriage = () => triageSessionMap.has(item.workItemKey)
+              const pc = () => phaseThemeColor(enriched.phaseColor, theme)
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1}>
@@ -334,11 +364,13 @@ Please fetch the full details and tell me what action is needed.`,
                     <box width={5} flexShrink={0}><text fg={sc()} attributes={TextAttributes.BOLD}>{String(item.score).padStart(3)}</text></box>
                     <box width={4} flexShrink={0}><text fg={item.tier === 1 ? (theme.warning ?? theme.primary) : theme.textMuted}>{tierBadge(item.tier)}</text></box>
                     <box width={4} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceBadges(item.sources)}</text></box>
+                    <box width={9} flexShrink={0}><text fg={pc()} attributes={TextAttributes.BOLD}>{phaseLabel(enriched.processPhase).padEnd(7)}</text></box>
                     <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.timestamp)}</text></box>
                     <box flexGrow={1}><text fg={item.isBlocking ? (theme.error ?? theme.text) : theme.text}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={8}>
+                    <text fg={pc()}>{enriched.processNeed ? `${enriched.processNeed}  ` : ""}</text>
                     <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.scoreBreakdown}</text>
                   </box>
                 </box>
