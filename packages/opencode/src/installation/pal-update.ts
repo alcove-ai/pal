@@ -93,12 +93,12 @@ async function fetchText(url: string): Promise<string | null> {
   try {
     const resp = await fetchWithTimeout(url, METADATA_TIMEOUT_MS)
     if (!resp.ok) {
-      log.debug("fetch failed", { url, status: resp.status })
+      log.info("fetch failed", { url, status: resp.status })
       return null
     }
     return (await resp.text()).trim()
   } catch (e) {
-    log.debug("fetch error", { url, error: e instanceof Error ? e.message : String(e) })
+    log.info("fetch error", { url, error: e instanceof Error ? e.message : String(e) })
     return null
   }
 }
@@ -107,13 +107,13 @@ async function fetchBinary(url: string): Promise<Buffer | null> {
   try {
     const resp = await fetchWithTimeout(url, BINARY_TIMEOUT_MS)
     if (!resp.ok) {
-      log.debug("binary fetch failed", { url, status: resp.status })
+      log.info("binary fetch failed", { url, status: resp.status })
       return null
     }
     const ab = await resp.arrayBuffer()
     return Buffer.from(ab)
   } catch (e) {
-    log.debug("binary fetch error", { url, error: e instanceof Error ? e.message : String(e) })
+    log.info("binary fetch error", { url, error: e instanceof Error ? e.message : String(e) })
     return null
   }
 }
@@ -161,7 +161,7 @@ export async function checkForUpdate(): Promise<void> {
     // Determine platform binary name
     const assetName = getPlatformAssetName()
     if (!assetName) {
-      log.debug("unsupported platform for auto-update", { platform: os.platform(), arch: os.arch() })
+      log.info("unsupported platform for auto-update", { platform: os.platform(), arch: os.arch() })
       return
     }
 
@@ -182,19 +182,16 @@ export async function checkForUpdate(): Promise<void> {
     }
 
     if (!writable) {
-      // Cannot auto-update; print manual instructions
-      process.stderr.write(
-        `pal: v${remoteVersion} available. Update manually:\n` +
-          `  curl -fSL "${binaryUrl}" -o "${execPath}" && chmod +x "${execPath}"\n`,
-      )
+      log.info("binary not writable, manual update needed", { execPath })
       return
     }
 
     // Download binary and checksum
+    log.info("downloading update", { binaryUrl, checksumUrl })
     const [binaryData, checksumData] = await Promise.all([fetchBinary(binaryUrl), fetchText(checksumUrl)])
 
     if (!binaryData || !checksumData) {
-      log.debug("failed to download binary or checksum")
+      log.info("failed to download binary or checksum", { hasBinary: !!binaryData, hasChecksum: !!checksumData })
       return
     }
 
@@ -208,6 +205,7 @@ export async function checkForUpdate(): Promise<void> {
     }
 
     // Atomic update: write to temp file then rename(2)
+    log.info("applying update", { execPath, size: binaryData.length })
     const tmpPath = execPath + `.update-${process.pid}`
     try {
       fs.writeFileSync(tmpPath, binaryData, { mode: 0o755 })
@@ -220,21 +218,16 @@ export async function checkForUpdate(): Promise<void> {
         // ignore cleanup errors
       }
 
-      // Fall back to manual instructions
-      process.stderr.write(
-        `pal: v${remoteVersion} available but auto-update failed. Update manually:\n` +
-          `  curl -fSL "${binaryUrl}" -o "${execPath}" && chmod +x "${execPath}"\n`,
-      )
-      log.debug("auto-update write failed", { error: e instanceof Error ? e.message : String(e) })
+      log.info("auto-update write failed", { error: e instanceof Error ? e.message : String(e) })
       return
     }
 
     _completedVersion = remoteVersion
     for (const cb of _listeners) cb(remoteVersion)
-    log.info("auto-update complete", { version: remoteVersion })
+    log.info("auto-update complete, restart to apply", { version: remoteVersion })
   } catch (e) {
     // Catch-all: never let update check crash the app
-    log.debug("update check failed", { error: e instanceof Error ? e.message : String(e) })
+    log.info("update check failed", { error: e instanceof Error ? e.message : String(e) })
   }
 }
 
