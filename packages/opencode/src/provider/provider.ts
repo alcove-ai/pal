@@ -507,7 +507,23 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         },
         async getModel(sdk: any, modelID) {
           const id = String(modelID).trim()
-          return sdk.languageModel(id)
+          const model = sdk.languageModel(id)
+          // Patch transformRequestBody to inject anthropic_beta from betas set into the
+          // request body. The upstream SDK puts betas in headers (for the direct API) but
+          // Vertex AI requires them as a body parameter. The SDK's Vertex provider strips
+          // the model field and adds anthropic_version but ignores betas entirely.
+          if (model.config) {
+            const origTransform = model.config.transformRequestBody
+            model.config.transformRequestBody = (args: any, betas?: Set<string>) => {
+              const body = origTransform ? origTransform(args, betas) : args
+              const betaList = betas && betas.size > 0 ? Array.from(betas) : []
+              if (!betaList.includes("context-1m-2025-08-07")) {
+                betaList.push("context-1m-2025-08-07")
+              }
+              return { ...body, anthropic_beta: betaList }
+            }
+          }
+          return model
         },
       }
     }),
