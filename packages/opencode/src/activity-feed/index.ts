@@ -22,7 +22,7 @@ const RECOVERY_THRESHOLD = 3
 const RETENTION_DAYS = 30
 const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000
 const PRUNE_BATCH_LIMIT = 500
-const FIRST_RUN_LOOKBACK_MS = 24 * 60 * 60 * 1000
+const FIRST_RUN_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000
 
 // Bus events
 export const ActivityEventsUpdated = BusEvent.define(
