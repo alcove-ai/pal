@@ -46,7 +46,8 @@ export function TabBar(props: { activeTab: number }) {
             }}
           </For>
         </box>
-        <box flexShrink={0} paddingRight={1}>
+        <box flexShrink={0} paddingRight={1} gap={1}>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"Shift+←→"}</text>
           <text fg={theme.textMuted}>{version}</text>
         </box>
       </box>

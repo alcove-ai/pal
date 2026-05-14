@@ -300,18 +300,19 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   })
 
-  // Tab switching: Tab cycles forward, Shift+Tab cycles backward
+  // Tab switching: Shift+Right = next tab, Shift+Left = previous tab
   useKeyboard((evt) => {
     if (dialog.stack.length > 0) return
     if (command.suspended()) return
     if (evt.defaultPrevented) return
-    if (evt.name !== "tab") return
+    if (!evt.shift) return
+    if (evt.name !== "right" && evt.name !== "left") return
     evt.preventDefault()
     const count = getTabCount()
-    if (evt.shift) {
-      setActiveTab(((activeTab() - 2 + count) % count) + 1)
-    } else {
+    if (evt.name === "right") {
       setActiveTab((activeTab() % count) + 1)
+    } else {
+      setActiveTab(((activeTab() - 2 + count) % count) + 1)
     }
   })
 
