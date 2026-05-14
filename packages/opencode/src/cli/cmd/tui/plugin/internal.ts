@@ -11,6 +11,7 @@ import SessionV2Debug from "../feature-plugins/system/session-v2"
 import PalNeedsMe from "../feature-plugins/pal/needs-me"
 import PalDomains from "../feature-plugins/pal/domains"
 import PalActivity from "../feature-plugins/pal/activity"
+import PalRadar from "../feature-plugins/pal/radar"
 import PalSettings from "../feature-plugins/pal/settings"
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { Flag } from "@opencode-ai/core/flag/flag"
@@ -34,5 +35,6 @@ export const INTERNAL_TUI_PLUGINS: InternalTuiPlugin[] = [
   PalNeedsMe,
   PalDomains,
   PalActivity,
+  PalRadar,
   PalSettings,
 ]

@@ -15,6 +15,7 @@ export interface JiraFeedConfig {
   jql: string
   /** Optional weight for sorting/prioritization */
   weight?: number
+  mode?: "own" | "watch"
 }
 
 export interface JiraConfig {
@@ -41,6 +42,7 @@ export interface GitHubConfig {
   upstreamPollOrg?: string
   /** Bot logins to ignore */
   botIgnoreList?: string[]
+  mode?: "own" | "watch"
 }
 
 // --- Activity feed: GitLab ---
@@ -48,6 +50,7 @@ export interface GitHubConfig {
 export interface GitLabRepoEntry {
   projectId: string
   projectPath: string
+  mode?: "own" | "watch"
 }
 
 export interface GitLabConfig {

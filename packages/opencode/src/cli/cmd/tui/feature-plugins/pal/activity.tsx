@@ -86,19 +86,23 @@ function formatTimestamp(ts: number): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
-function loadEvents(actorTypeFilter?: ActorType, feedFilter?: string | null): ActivityEvent[] {
+function loadEvents(actorTypeFilter?: ActorType, modeFilter?: "all" | "own" | "watch"): ActivityEvent[] {
   try {
-    const rows = Database.use((db) => {
+    const all = Database.use((db) => {
       const query = db.select().from(ActivityEventTable)
       if (actorTypeFilter) {
-        return query.where(eq(ActivityEventTable.actor_type, actorTypeFilter)).orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE * 2).all() as ActivityEvent[]
+        return query.where(eq(ActivityEventTable.actor_type, actorTypeFilter)).orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE).all() as ActivityEvent[]
       }
-      return query.orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE * 2).all() as ActivityEvent[]
+      return query.orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE).all() as ActivityEvent[]
     })
-    if (feedFilter) {
-      return rows.filter((e) => (e as unknown as Record<string, unknown>).feed === feedFilter).slice(0, PAGE_SIZE)
+    // Apply mode filter client-side (mode column is being added by another agent)
+    if (modeFilter === "own") {
+      return all.filter((e) => { const mode = (e as any).mode; return mode === "own" || mode === null || mode === undefined })
     }
-    return rows.slice(0, PAGE_SIZE)
+    if (modeFilter === "watch") {
+      return all.filter((e) => (e as any).mode === "watch")
+    }
+    return all
   } catch {
     return []
   }
@@ -106,6 +110,9 @@ function loadEvents(actorTypeFilter?: ActorType, feedFilter?: string | null): Ac
 
 type ActorTypeFilter = "all" | ActorType
 const ACTOR_TYPE_FILTERS: ActorTypeFilter[] = ["all", "human", "agent"]
+
+type ModeFilter = "all" | "own" | "watch"
+const MODE_FILTERS: ModeFilter[] = ["all", "own", "watch"]
 
 function actorTypeBadge(actorType: ActorType | string): string {
   switch (actorType) {
@@ -116,13 +123,17 @@ function actorTypeBadge(actorType: ActorType | string): string {
   }
 }
 
+function modeBadge(mode: string | null | undefined): string {
+  return mode === "watch" ? " W " : " O "
+}
+
 function ActivityView() {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const [events, setEvents] = createSignal<ActivityEvent[]>([])
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [actorFilter, setActorFilter] = createSignal<ActorTypeFilter>("all")
-  const [feedFilter, setFeedFilter] = createSignal<string | null>(null)
+  const [modeFilter, setModeFilter] = createSignal<ModeFilter>("all")
 
   function cycleActorFilter() {
     const current = actorFilter()
@@ -131,35 +142,17 @@ function ActivityView() {
     refresh()
   }
 
+  function cycleModeFilter() {
+    const current = modeFilter()
+    const idx = MODE_FILTERS.indexOf(current)
+    setModeFilter(MODE_FILTERS[(idx + 1) % MODE_FILTERS.length])
+    refresh()
+  }
+
   function refresh() {
     const filter = actorFilter()
-    setEvents(loadEvents(filter === "all" ? undefined : filter, feedFilter()))
-  }
-
-  const availableFeeds = () => {
-    const feeds = new Set<string>()
-    for (const e of events()) {
-      const feed = (e as unknown as Record<string, unknown>).feed as string | null | undefined
-      if (feed) feeds.add(feed)
-    }
-    return [...feeds].sort()
-  }
-
-  function cycleFeedFilter() {
-    const feeds = availableFeeds()
-    if (feeds.length === 0) return
-    const current = feedFilter()
-    if (current === null) {
-      setFeedFilter(feeds[0])
-    } else {
-      const idx = feeds.indexOf(current)
-      if (idx < 0 || idx >= feeds.length - 1) {
-        setFeedFilter(null)
-      } else {
-        setFeedFilter(feeds[idx + 1])
-      }
-    }
-    refresh()
+    const mode = modeFilter()
+    setEvents(loadEvents(filter === "all" ? undefined : filter, mode))
   }
 
   onMount(() => refresh())
@@ -189,25 +182,22 @@ function ActivityView() {
             </text>
           )}
         </For>
-        <Show when={availableFeeds().length > 0}>
-          <text fg={theme.textMuted}>{"  |  "}</text>
-          <text fg={theme.textMuted}>Feed: </text>
-          <text fg={feedFilter() === null ? theme.primary : theme.textMuted} attributes={feedFilter() === null ? TextAttributes.BOLD : 0}>{" All "}</text>
-          <For each={availableFeeds()}>
-            {(feed) => (
-              <text fg={feedFilter() === feed ? theme.primary : theme.textMuted} attributes={feedFilter() === feed ? TextAttributes.BOLD : 0}>
-                {` ${feed} `}
-              </text>
-            )}
-          </For>
-        </Show>
+        <text fg={theme.textMuted}>{"  |  "}</text>
+        <text fg={theme.textMuted}>Mode: </text>
+        <For each={MODE_FILTERS}>
+          {(filter) => (
+            <text fg={modeFilter() === filter ? theme.primary : theme.textMuted} attributes={modeFilter() === filter ? TextAttributes.BOLD : 0}>
+              {` ${filter === "all" ? "All" : filter === "own" ? "Own" : "Watch"} `}
+            </text>
+          )}
+        </For>
       </box>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
         <box width={3} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
-        <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Feed</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Type</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Who</text></box>
+        <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Mode</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Rel</text></box>
         <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title / Summary</text></box>
         <box width={16} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
@@ -226,17 +216,21 @@ function ActivityView() {
               const relLevel = () => event.relevance as RelevanceLevel | null
               const relColor = () => relevanceColor(relLevel(), theme)
               const showRelevance = () => isUpstreamSource(event.source)
-              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 45, 10)
 
               return (
                 <box height={1} flexDirection="row" paddingLeft={1}>
                   <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(event.timestamp)}</text></box>
                   <box width={3} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceIcon(event.source as ActivitySource)}</text></box>
-                  <box width={8} flexShrink={0}><text fg={theme.textMuted}>{(((event as unknown as Record<string, unknown>).feed as string) ?? "").slice(0, 7)}</text></box>
                   <box width={5} flexShrink={0}><text fg={badgeColor()}>{eventTypeBadge(event.event_type as ActivityEventType)}</text></box>
                   <box width={5} flexShrink={0}>
                     <text fg={event.actor_type === "agent" ? (theme.warning ?? theme.primary) : theme.textMuted} attributes={event.actor_type === "agent" ? TextAttributes.BOLD : 0}>
                       {actorTypeBadge(event.actor_type ?? "human")}
+                    </text>
+                  </box>
+                  <box width={5} flexShrink={0}>
+                    <text fg={(event as any).mode === "watch" ? theme.textMuted : theme.primary} attributes={(event as any).mode === "watch" ? TextAttributes.DIM : TextAttributes.BOLD}>
+                      {modeBadge((event as any).mode)}
                     </text>
                   </box>
                   <box width={5} flexShrink={0}>

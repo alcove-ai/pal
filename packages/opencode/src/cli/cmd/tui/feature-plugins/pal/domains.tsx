@@ -22,7 +22,11 @@ interface DomainRow { name: string; owner: string; eventCount: number; health: H
 interface SnapshotData { domains: DomainRow[]; uncategorized: { eventCount: number; health: HealthSignals; highUncategorized: boolean }; totalEvents: number }
 
 function loadEvents(): ActivityEvent[] {
-  try { return Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(MAX_EVENTS).all() as ActivityEvent[]) }
+  try {
+    const all = Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(MAX_EVENTS).all() as ActivityEvent[])
+    // Domain health should only reflect own team's work, exclude watch-mode events
+    return all.filter((e) => { const mode = (e as any).mode; return mode !== "watch" })
+  }
   catch { return [] }
 }
 

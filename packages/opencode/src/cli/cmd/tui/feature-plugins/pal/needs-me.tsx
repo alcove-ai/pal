@@ -36,7 +36,11 @@ function scoreColor(score: number, theme: any): string {
 }
 
 function loadRecentEvents(): ActivityEvent[] {
-  try { return Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(500).all() as ActivityEvent[]) } catch { return [] }
+  try {
+    const all = Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(500).all() as ActivityEvent[])
+    // Only include own-mode events (mode === "own" or mode === null/undefined); watch-mode events should not appear in Needs Me
+    return all.filter((e) => { const mode = (e as any).mode; return mode === "own" || mode === null || mode === undefined })
+  } catch { return [] }
 }
 function getDismissedKeys(): Set<string> {
   try { return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key }).from(DismissedEventTable).where(eq(DismissedEventTable.action, "dismiss")).all(); return new Set(rows.map((r) => r.work_item_key)) }) } catch { return new Set() }

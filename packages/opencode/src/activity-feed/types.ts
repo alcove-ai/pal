@@ -1,5 +1,7 @@
 export type ActivitySource = "jira" | "github" | "gitlab"
 
+export type SourceMode = "own" | "watch"
+
 export type ActorType = "human" | "agent" | "system"
 
 export type ActivityEventType =
@@ -42,6 +44,7 @@ export interface ActivityEvent {
   metadata: Record<string, unknown> | null
   is_read: number
   feed: string | null
+  mode: "own" | "watch" | null
   relevance: string | null
   relevance_reasoning: string | null
   created_at: number

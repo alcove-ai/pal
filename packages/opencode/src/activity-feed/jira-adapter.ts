@@ -171,7 +171,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           try {
             parsed = typeof content === "string" ? JSON.parse(content) : content
           } catch {
-            log.warn("failed to parse jira_search response", { feed: feed.label, content: String(content).slice(0, 200) })
+            log.warn("failed to parse jira_search response", { feed: feed.label,
+              mode: feed.mode ?? "own", content: String(content).slice(0, 200) })
             continue
           }
 
@@ -183,7 +184,8 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
             return { id, key, fields }
           })
           if (issues.length > 100) {
-            log.warn("anomaly guard: capping issues at 100", { feed: feed.label, total: issues.length })
+            log.warn("anomaly guard: capping issues at 100", { feed: feed.label,
+              mode: feed.mode ?? "own", total: issues.length })
             issues.length = 100
           }
 
@@ -207,6 +209,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
               labels: issue.fields.labels,
               jira_key: issue.key,
               feed: feed.label,
+              mode: feed.mode ?? "own",
               feed_weight: feedWeight,
             }
             if (uniquePrUrls.length > 0) {
@@ -232,6 +235,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
               relevance_reasoning: null,
               created_at: Date.now(),
               feed: feed.label,
+              mode: feed.mode ?? "own",
             })
 
             // Process changelog entries
@@ -262,6 +266,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                     relevance_reasoning: null,
                     created_at: Date.now(),
               feed: feed.label,
+              mode: feed.mode ?? "own",
                   })
                   continue
                 }
@@ -290,6 +295,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                     relevance_reasoning: null,
                     created_at: Date.now(),
               feed: feed.label,
+              mode: feed.mode ?? "own",
                   })
                 } else if (field !== "description" && field !== "labels") {
                   // field_updated catch-all, skip cosmetic fields
@@ -315,6 +321,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                     relevance_reasoning: null,
                     created_at: Date.now(),
               feed: feed.label,
+              mode: feed.mode ?? "own",
                   })
                 }
               }
@@ -340,6 +347,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
                 relevance_reasoning: null,
                 created_at: Date.now(),
               feed: feed.label,
+              mode: feed.mode ?? "own",
               })
             }
           }

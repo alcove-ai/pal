@@ -108,6 +108,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
                 metadata: event.metadata,
                 is_read: event.is_read,
                 feed: event.feed ?? null,
+                mode: event.mode ?? null,
                 created_at: event.created_at,
               })
               .onConflictDoNothing()
@@ -253,7 +254,8 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
         // Classify upstream events for relevance (non-blocking)
         if (inserted > 0) {
           try {
-            await UpstreamRelevance.classifyBatch(filteredEvents)
+            const watchEvents = filteredEvents.filter((e) => e.mode === "watch")
+            if (watchEvents.length > 0) await UpstreamRelevance.classifyBatch(watchEvents)
           } catch (err) {
             log.debug("relevance classification failed", { error: err })
           }

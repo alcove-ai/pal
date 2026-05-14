@@ -17,7 +17,7 @@ function SettingsView() {
 }
 
 const tui: TuiPlugin = async () => {
-  registerTab({ key: 5, label: "Settings", order: 500, render: () => <SettingsView /> })
+  registerTab({ key: 6, label: "Settings", order: 600, render: () => <SettingsView /> })
 }
 
 const plugin: TuiPluginModule & { id: string } = { id, tui }
