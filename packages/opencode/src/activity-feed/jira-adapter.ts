@@ -220,7 +220,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           }
 
           // Check if issue was created recently
-          const createdTs = parseTimestamp(issue.fields.created)
+          const createdTs = parseTimestamp(issue.fields.updated ?? issue.fields.created)
           events.push({
             id: Identifier.create("evt", "ascending"),
             source: "jira",
