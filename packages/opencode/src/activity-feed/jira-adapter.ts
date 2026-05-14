@@ -149,7 +149,7 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
           const result = await searchTool.execute(
             {
               jql,
-              fields: "summary,status,assignee,priority,labels,created,updated,creator,description,comment",
+              fields: "summary,status,assignee,priority,labels,created,updated,creator,description,comment,issuetype,components,parent",
               expand: "changelog",
               limit: 50,
             },
@@ -211,6 +211,11 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
               feed: feed.label,
               mode: feed.mode ?? "own",
               feed_weight: feedWeight,
+              description: issue.fields.description ?? null,
+              issue_type: issue.fields.issuetype?.name ?? issue.fields.issue_type?.name ?? null,
+              components: (issue.fields.components ?? []).map?.((c: any) => c.name ?? c) ?? [],
+              parent_key: issue.fields.parent?.key ?? null,
+              assignee: issue.fields.assignee?.displayName ?? null,
             }
             if (uniquePrUrls.length > 0) {
               baseMetadata.github_pr_urls = uniquePrUrls

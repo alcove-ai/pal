@@ -95,6 +95,8 @@ export interface NeedsMeItem {
   domains: string[]
   /** Whether the item has security labels or critical priority (exempt from suppression) */
   isExemptFromSuppression: boolean
+  /** Metadata from the best-matching source event */
+  metadata: Record<string, unknown> | null
 }
 
 // --- Tier 1 rules: synchronous / direct signals ---
@@ -255,15 +257,8 @@ function computeScore(
     parts.push(`blocks(x${blockingMult})`)
   }
 
-  // Feed weight from event metadata (defaults to 1.0 if not set)
-  const feedWeight = (event.metadata as Record<string, unknown>)?.feed_weight as number ?? 1.0
-
-  const raw = Math.round((baseWeight + agePenalty + domainBonus) * multiplier * feedWeight)
+  const raw = Math.round((baseWeight + agePenalty + domainBonus) * multiplier)
   const score = Math.min(raw, MAX_SCORE)
-
-  if (feedWeight !== 1.0) {
-    parts.push(`feed_weight(x${feedWeight})`)
-  }
 
   parts.push(`= ${score}`)
 
@@ -372,6 +367,7 @@ export function classify(events: ActivityEvent[], config: NeedsMeConfig): Classi
       isBlocking: group.events.some((e) => e.blocking),
       domains: [...new Set(group.events.flatMap((e) => e.domains))],
       isExemptFromSuppression: group.events.some((e) => e.exempt),
+      metadata: best.event.metadata ?? null,
     })
   }
 
