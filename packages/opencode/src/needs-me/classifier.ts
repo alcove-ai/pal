@@ -255,8 +255,15 @@ function computeScore(
     parts.push(`blocks(x${blockingMult})`)
   }
 
-  const raw = Math.round((baseWeight + agePenalty + domainBonus) * multiplier)
+  // Feed weight from event metadata (defaults to 1.0 if not set)
+  const feedWeight = (event.metadata as Record<string, unknown>)?.feed_weight as number ?? 1.0
+
+  const raw = Math.round((baseWeight + agePenalty + domainBonus) * multiplier * feedWeight)
   const score = Math.min(raw, MAX_SCORE)
+
+  if (feedWeight !== 1.0) {
+    parts.push(`feed_weight(x${feedWeight})`)
+  }
 
   parts.push(`= ${score}`)
 

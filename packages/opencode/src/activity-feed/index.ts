@@ -107,6 +107,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
                 url: event.url,
                 metadata: event.metadata,
                 is_read: event.is_read,
+                feed: event.feed ?? null,
                 created_at: event.created_at,
               })
               .onConflictDoNothing()

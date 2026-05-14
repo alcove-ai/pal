@@ -86,15 +86,19 @@ function formatTimestamp(ts: number): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
-function loadEvents(actorTypeFilter?: ActorType): ActivityEvent[] {
+function loadEvents(actorTypeFilter?: ActorType, feedFilter?: string | null): ActivityEvent[] {
   try {
-    return Database.use((db) => {
+    const rows = Database.use((db) => {
       const query = db.select().from(ActivityEventTable)
       if (actorTypeFilter) {
-        return query.where(eq(ActivityEventTable.actor_type, actorTypeFilter)).orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE).all() as ActivityEvent[]
+        return query.where(eq(ActivityEventTable.actor_type, actorTypeFilter)).orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE * 2).all() as ActivityEvent[]
       }
-      return query.orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE).all() as ActivityEvent[]
+      return query.orderBy(desc(ActivityEventTable.timestamp)).limit(PAGE_SIZE * 2).all() as ActivityEvent[]
     })
+    if (feedFilter) {
+      return rows.filter((e) => (e as unknown as Record<string, unknown>).feed === feedFilter).slice(0, PAGE_SIZE)
+    }
+    return rows.slice(0, PAGE_SIZE)
   } catch {
     return []
   }
@@ -118,6 +122,7 @@ function ActivityView() {
   const [events, setEvents] = createSignal<ActivityEvent[]>([])
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [actorFilter, setActorFilter] = createSignal<ActorTypeFilter>("all")
+  const [feedFilter, setFeedFilter] = createSignal<string | null>(null)
 
   function cycleActorFilter() {
     const current = actorFilter()
@@ -128,7 +133,33 @@ function ActivityView() {
 
   function refresh() {
     const filter = actorFilter()
-    setEvents(loadEvents(filter === "all" ? undefined : filter))
+    setEvents(loadEvents(filter === "all" ? undefined : filter, feedFilter()))
+  }
+
+  const availableFeeds = () => {
+    const feeds = new Set<string>()
+    for (const e of events()) {
+      const feed = (e as unknown as Record<string, unknown>).feed as string | null | undefined
+      if (feed) feeds.add(feed)
+    }
+    return [...feeds].sort()
+  }
+
+  function cycleFeedFilter() {
+    const feeds = availableFeeds()
+    if (feeds.length === 0) return
+    const current = feedFilter()
+    if (current === null) {
+      setFeedFilter(feeds[0])
+    } else {
+      const idx = feeds.indexOf(current)
+      if (idx < 0 || idx >= feeds.length - 1) {
+        setFeedFilter(null)
+      } else {
+        setFeedFilter(feeds[idx + 1])
+      }
+    }
+    refresh()
   }
 
   onMount(() => refresh())
@@ -158,10 +189,23 @@ function ActivityView() {
             </text>
           )}
         </For>
+        <Show when={availableFeeds().length > 0}>
+          <text fg={theme.textMuted}>{"  |  "}</text>
+          <text fg={theme.textMuted}>Feed: </text>
+          <text fg={feedFilter() === null ? theme.primary : theme.textMuted} attributes={feedFilter() === null ? TextAttributes.BOLD : 0}>{" All "}</text>
+          <For each={availableFeeds()}>
+            {(feed) => (
+              <text fg={feedFilter() === feed ? theme.primary : theme.textMuted} attributes={feedFilter() === feed ? TextAttributes.BOLD : 0}>
+                {` ${feed} `}
+              </text>
+            )}
+          </For>
+        </Show>
       </box>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
         <box width={3} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
+        <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Feed</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Type</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Who</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Rel</text></box>
@@ -188,6 +232,7 @@ function ActivityView() {
                 <box height={1} flexDirection="row" paddingLeft={1}>
                   <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(event.timestamp)}</text></box>
                   <box width={3} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceIcon(event.source as ActivitySource)}</text></box>
+                  <box width={8} flexShrink={0}><text fg={theme.textMuted}>{(((event as unknown as Record<string, unknown>).feed as string) ?? "").slice(0, 7)}</text></box>
                   <box width={5} flexShrink={0}><text fg={badgeColor()}>{eventTypeBadge(event.event_type as ActivityEventType)}</text></box>
                   <box width={5} flexShrink={0}>
                     <text fg={event.actor_type === "agent" ? (theme.warning ?? theme.primary) : theme.textMuted} attributes={event.actor_type === "agent" ? TextAttributes.BOLD : 0}>

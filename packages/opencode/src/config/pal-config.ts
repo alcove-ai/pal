@@ -8,13 +8,20 @@ const log = Log.create({ service: "config.pal" })
 
 // --- Activity feed: Jira ---
 
+export interface JiraFeedConfig {
+  /** Human-readable label for this feed */
+  label: string
+  /** JQL query defining the feed */
+  jql: string
+  /** Optional weight for sorting/prioritization */
+  weight?: number
+}
+
 export interface JiraConfig {
   /** Base URL for the Jira instance (e.g. "https://your-org.atlassian.net") */
   url?: string
-  /** JQL project filter (e.g. "MYPROJECT") */
-  project?: string
-  /** JQL time range for polling (e.g. "-3m") */
-  updatedSince?: string
+  /** Named feeds, each with its own JQL query */
+  feeds?: JiraFeedConfig[]
 }
 
 // --- Activity feed: GitHub ---
@@ -103,8 +110,6 @@ function resolveConfigPath(): string {
     const dir = Instance.directory
     return path.join(dir, ".opencode", "pal.json")
   } catch {
-    const cwdPath = path.join(process.cwd(), ".opencode", "pal.json")
-    if (fsNode.existsSync(cwdPath)) return cwdPath
     return path.join(Global.Path.config, "pal.json")
   }
 }
@@ -136,11 +141,25 @@ function loadFromDisk(configPath: string): PalConfig {
 
       // Jira
       if (af.jira && typeof af.jira === "object") {
-        result.activityFeed.jira = {
+        const jiraResult: JiraConfig = {
           url: typeof af.jira.url === "string" ? af.jira.url : undefined,
-          project: typeof af.jira.project === "string" ? af.jira.project : undefined,
-          updatedSince: typeof af.jira.updatedSince === "string" ? af.jira.updatedSince : undefined,
         }
+
+        if (Array.isArray((af.jira as any).feeds)) {
+          jiraResult.feeds = ((af.jira as any).feeds as unknown[])
+            .filter((f: unknown): f is JiraFeedConfig =>
+              !!f &&
+              typeof f === "object" &&
+              typeof (f as any).label === "string" &&
+              typeof (f as any).jql === "string")
+            .map((f) => ({
+              label: f.label,
+              jql: f.jql,
+              ...(typeof f.weight === "number" ? { weight: f.weight } : {}),
+            }))
+        }
+
+        result.activityFeed.jira = jiraResult
       }
 
       // GitHub

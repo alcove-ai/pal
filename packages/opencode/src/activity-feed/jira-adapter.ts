@@ -132,220 +132,220 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
 
       try {
         const config = PalConfig.get()
-        const jiraProject = config.activityFeed?.jira?.project
-        const updatedSince = config.activityFeed?.jira?.updatedSince ?? "-90d"
-        log.info("jira poll config", { project: jiraProject ?? "(all)", updatedSince, configPath: "pal.json" })
-
-        const jqlParts: string[] = []
-        if (jiraProject) {
-          jqlParts.push(`project = ${jiraProject}`)
-        }
-        jqlParts.push(`updated >= "${updatedSince}"`)
-        const jql = jqlParts.join(" AND ") + " ORDER BY updated DESC"
-        log.info("jira poll executing", { jql, tool: searchToolName })
-
-        const result = await searchTool.execute(
-          {
-            jql,
-            fields: "summary,status,assignee,priority,labels,created,updated,creator,description,comment",
-            expand: "changelog",
-            limit: 50,
-          },
-          { abortSignal: AbortSignal.timeout(25_000) },
-        )
-
-        if (!result) {
-          log.warn("jira_search returned no result")
+        const feeds = config.activityFeed?.jira?.feeds
+        if (!feeds || feeds.length === 0) {
+          log.info("no Jira feeds configured, skipping poll")
           return []
         }
 
-        const resultObj = result as Record<string, unknown>
-        log.info("jira poll raw result type", {
-          type: typeof result,
-          keys: Object.keys(resultObj).slice(0, 5),
-          isError: resultObj.isError,
-          contentLength: Array.isArray(resultObj.content) ? resultObj.content.length : "not-array",
-          contentFirstItem: Array.isArray(resultObj.content) ? JSON.stringify(resultObj.content[0]).slice(0, 200) : "n/a",
-          hasStructuredContent: "structuredContent" in resultObj,
-          structuredContentPreview: resultObj.structuredContent ? JSON.stringify(resultObj.structuredContent).slice(0, 200) : "n/a",
-        })
+        const allEvents: ActivityEvent[] = []
+        const seenSourceIds = new Set<string>()
 
-        const content = extractContent(result)
-        if (!content) {
-          log.warn("could not extract content from jira_search result", { resultPreview: JSON.stringify(result).slice(0, 300) })
-          return []
-        }
+        for (const feed of feeds) {
+          const jql = `${feed.jql} AND updated >= "-90d" ORDER BY updated DESC`
 
-        log.info("jira poll content extracted", { contentType: typeof content, length: String(content).length, preview: String(content).slice(0, 200) })
+          log.info("polling Jira feed", { label: feed.label, jql })
 
-        let parsed: { issues?: JiraIssue[]; total?: number }
-        try {
-          parsed = typeof content === "string" ? JSON.parse(content) : content
-        } catch {
-          log.warn("failed to parse jira_search response", { content: String(content).slice(0, 200) })
-          return []
-        }
+          const result = await searchTool.execute(
+            {
+              jql,
+              fields: "summary,status,assignee,priority,labels,created,updated,creator,description,comment",
+              expand: "changelog",
+              limit: 50,
+            },
+            { abortSignal: AbortSignal.timeout(25_000) },
+          )
 
-        const rawIssues = parsed.issues ?? []
-        // MCP-Atlassian returns fields at top level; normalize to { key, fields: {...} }
-        const issues = rawIssues.map((issue: any) => {
-          if (issue.fields) return issue
-          const { id, key, ...fields } = issue
-          return { id, key, fields }
-        })
-        log.info("jira poll parsed", { issueCount: issues.length, total: parsed.total })
-        if (issues.length > 100) {
-          log.warn("anomaly guard: capping issues at 100", { total: issues.length })
-          issues.length = 100
-        }
-
-        const events: ActivityEvent[] = []
-
-        for (const issue of issues) {
-          const prUrls = extractPrUrls(issue.fields?.description ?? "")
-          // Also extract from comments
-          for (const comment of issue.fields.comment?.comments ?? []) {
-            prUrls.push(...extractPrUrls(comment.body))
-          }
-          const uniquePrUrls = [...new Set(prUrls)]
-
-          const baseMetadata: Record<string, unknown> = {
-            status: issue.fields.status?.name,
-            priority: issue.fields.priority?.name,
-            labels: issue.fields.labels,
-            jira_key: issue.key,
-          }
-          if (uniquePrUrls.length > 0) {
-            baseMetadata.github_pr_urls = uniquePrUrls
+          if (!result) {
+            log.warn("jira_search returned no result", { feed: feed.label })
+            continue
           }
 
-          // Check if issue was created recently
-          const createdTs = parseTimestamp(issue.fields.updated ?? issue.fields.created)
-          events.push({
-            id: Identifier.create("evt", "ascending"),
-            source: "jira",
-            source_id: issue.key,
-            event_type: "issue_created",
-            title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
-            summary: `Issue created`,
-            actor: issue.fields.creator?.displayName ?? null,
-            actor_type: detectActorType(issue.fields.creator?.displayName ?? null, baseMetadata, agentConfig),
-            timestamp: createdTs,
-            url: issueUrl(issue.key),
-            metadata: baseMetadata,
-            is_read: 0,
-              relevance: null,
-              relevance_reasoning: null,
-            created_at: Date.now(),
+          const content = extractContent(result)
+          if (!content) {
+            log.warn("could not extract content from jira_search result", { feed: feed.label })
+            continue
+          }
+
+          let parsed: { issues?: JiraIssue[]; total?: number }
+          try {
+            parsed = typeof content === "string" ? JSON.parse(content) : content
+          } catch {
+            log.warn("failed to parse jira_search response", { feed: feed.label, content: String(content).slice(0, 200) })
+            continue
+          }
+
+          // MCP-Atlassian returns fields at top level; normalize to { key, fields: {...} }
+          const rawIssues = parsed.issues ?? []
+          const issues = rawIssues.map((issue: any) => {
+            if (issue.fields) return issue
+            const { id, key, ...fields } = issue
+            return { id, key, fields }
           })
-
-          // Process changelog entries
-          for (const history of issue.changelog?.histories ?? []) {
-            const historyTs = parseTimestamp(history.created)
-            const historyActor = history.author?.displayName ?? null
-
-            for (const item of history.items ?? []) {
-              const field = item.field?.toLowerCase()
-              if (!field) continue
-
-              // Check for blocked label
-              if (field === "labels" && item.toString?.includes("Blocked")) {
-                events.push({
-                  id: Identifier.create("evt", "ascending"),
-                  source: "jira",
-                  source_id: issue.key,
-                  event_type: "blocked",
-                  title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
-                  summary: `Issue blocked`,
-                  actor: historyActor,
-                  actor_type: detectActorType(historyActor, { ...baseMetadata, blocked: true }, agentConfig),
-                  timestamp: historyTs,
-                  url: issueUrl(issue.key),
-                  metadata: { ...baseMetadata, blocked: true },
-                  is_read: 0,
-              relevance: null,
-              relevance_reasoning: null,
-                  created_at: Date.now(),
-                })
-                continue
-              }
-
-              const eventType = TRACKED_CHANGELOG_FIELDS[field]
-              if (eventType) {
-                const summary = buildChangelogSummary(field, item)
-                events.push({
-                  id: Identifier.create("evt", "ascending"),
-                  source: "jira",
-                  source_id: issue.key,
-                  event_type: eventType,
-                  title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
-                  summary,
-                  actor: historyActor,
-                  actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
-                  timestamp: historyTs,
-                  url: issueUrl(issue.key),
-                  metadata: {
-                    ...baseMetadata,
-                    change_from: item.fromString,
-                    change_to: item.toString,
-                  },
-                  is_read: 0,
-              relevance: null,
-              relevance_reasoning: null,
-                  created_at: Date.now(),
-                })
-              } else if (field !== "description" && field !== "labels") {
-                // field_updated catch-all, skip cosmetic fields
-                events.push({
-                  id: Identifier.create("evt", "ascending"),
-                  source: "jira",
-                  source_id: issue.key,
-                  event_type: "field_updated",
-                  title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
-                  summary: `Field "${item.field}" updated`,
-                  actor: historyActor,
-                  actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
-                  timestamp: historyTs,
-                  url: issueUrl(issue.key),
-                  metadata: {
-                    ...baseMetadata,
-                    field: item.field,
-                    change_from: item.fromString,
-                    change_to: item.toString,
-                  },
-                  is_read: 0,
-              relevance: null,
-              relevance_reasoning: null,
-                  created_at: Date.now(),
-                })
-              }
-            }
+          if (issues.length > 100) {
+            log.warn("anomaly guard: capping issues at 100", { feed: feed.label, total: issues.length })
+            issues.length = 100
           }
 
-          // Process comments
-          for (const comment of issue.fields.comment?.comments ?? []) {
-            const commentTs = parseTimestamp(comment.created ?? comment.updated)
-            events.push({
+          const feedWeight = feed.weight ?? 1.0
+
+          for (const issue of issues) {
+            // Skip duplicates — first feed wins
+            if (seenSourceIds.has(issue.key)) continue
+            seenSourceIds.add(issue.key)
+
+            const prUrls = extractPrUrls(issue.fields.description)
+            // Also extract from comments
+            for (const comment of issue.fields.comment?.comments ?? []) {
+              prUrls.push(...extractPrUrls(comment.body))
+            }
+            const uniquePrUrls = [...new Set(prUrls)]
+
+            const baseMetadata: Record<string, unknown> = {
+              status: issue.fields.status?.name,
+              priority: issue.fields.priority?.name,
+              labels: issue.fields.labels,
+              jira_key: issue.key,
+              feed: feed.label,
+              feed_weight: feedWeight,
+            }
+            if (uniquePrUrls.length > 0) {
+              baseMetadata.github_pr_urls = uniquePrUrls
+            }
+
+            // Check if issue was created recently
+            const createdTs = parseTimestamp(issue.fields.updated ?? issue.fields.created)
+            allEvents.push({
               id: Identifier.create("evt", "ascending"),
               source: "jira",
               source_id: issue.key,
-              event_type: "commented",
+              event_type: "issue_created",
               title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
-              summary: comment.body ? comment.body.slice(0, 200) : "New comment",
-              actor: comment.author?.displayName ?? null,
-              actor_type: detectActorType(comment.author?.displayName ?? null, { ...baseMetadata, comment_id: comment.id }, agentConfig),
-              timestamp: commentTs,
+              summary: `Issue created`,
+              actor: issue.fields.creator?.displayName ?? null,
+              actor_type: detectActorType(issue.fields.creator?.displayName ?? null, baseMetadata, agentConfig),
+              timestamp: createdTs,
               url: issueUrl(issue.key),
-              metadata: { ...baseMetadata, comment_id: comment.id },
+              metadata: baseMetadata,
               is_read: 0,
               relevance: null,
               relevance_reasoning: null,
               created_at: Date.now(),
+              feed: feed.label,
             })
+
+            // Process changelog entries
+            for (const history of issue.changelog?.histories ?? []) {
+              const historyTs = parseTimestamp(history.created)
+              const historyActor = history.author?.displayName ?? null
+
+              for (const item of history.items ?? []) {
+                const field = item.field?.toLowerCase()
+                if (!field) continue
+
+                // Check for blocked label
+                if (field === "labels" && item.toString?.includes("Blocked")) {
+                  allEvents.push({
+                    id: Identifier.create("evt", "ascending"),
+                    source: "jira",
+                    source_id: issue.key,
+                    event_type: "blocked",
+                    title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
+                    summary: `Issue blocked`,
+                    actor: historyActor,
+                    actor_type: detectActorType(historyActor, { ...baseMetadata, blocked: true }, agentConfig),
+                    timestamp: historyTs,
+                    url: issueUrl(issue.key),
+                    metadata: { ...baseMetadata, blocked: true },
+                    is_read: 0,
+                    relevance: null,
+                    relevance_reasoning: null,
+                    created_at: Date.now(),
+              feed: feed.label,
+                  })
+                  continue
+                }
+
+                const eventType = TRACKED_CHANGELOG_FIELDS[field]
+                if (eventType) {
+                  const summary = buildChangelogSummary(field, item)
+                  allEvents.push({
+                    id: Identifier.create("evt", "ascending"),
+                    source: "jira",
+                    source_id: issue.key,
+                    event_type: eventType,
+                    title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
+                    summary,
+                    actor: historyActor,
+                    actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
+                    timestamp: historyTs,
+                    url: issueUrl(issue.key),
+                    metadata: {
+                      ...baseMetadata,
+                      change_from: item.fromString,
+                      change_to: item.toString,
+                    },
+                    is_read: 0,
+                    relevance: null,
+                    relevance_reasoning: null,
+                    created_at: Date.now(),
+              feed: feed.label,
+                  })
+                } else if (field !== "description" && field !== "labels") {
+                  // field_updated catch-all, skip cosmetic fields
+                  allEvents.push({
+                    id: Identifier.create("evt", "ascending"),
+                    source: "jira",
+                    source_id: issue.key,
+                    event_type: "field_updated",
+                    title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
+                    summary: `Field "${item.field}" updated`,
+                    actor: historyActor,
+                    actor_type: detectActorType(historyActor, baseMetadata, agentConfig),
+                    timestamp: historyTs,
+                    url: issueUrl(issue.key),
+                    metadata: {
+                      ...baseMetadata,
+                      field: item.field,
+                      change_from: item.fromString,
+                      change_to: item.toString,
+                    },
+                    is_read: 0,
+                    relevance: null,
+                    relevance_reasoning: null,
+                    created_at: Date.now(),
+              feed: feed.label,
+                  })
+                }
+              }
+            }
+
+            // Process comments
+            for (const comment of issue.fields.comment?.comments ?? []) {
+              const commentTs = parseTimestamp(comment.created ?? comment.updated)
+              allEvents.push({
+                id: Identifier.create("evt", "ascending"),
+                source: "jira",
+                source_id: issue.key,
+                event_type: "commented",
+                title: `${issue.key}: ${issue.fields.summary ?? "Untitled"}`,
+                summary: comment.body ? comment.body.slice(0, 200) : "New comment",
+                actor: comment.author?.displayName ?? null,
+                actor_type: detectActorType(comment.author?.displayName ?? null, { ...baseMetadata, comment_id: comment.id }, agentConfig),
+                timestamp: commentTs,
+                url: issueUrl(issue.key),
+                metadata: { ...baseMetadata, comment_id: comment.id },
+                is_read: 0,
+                relevance: null,
+                relevance_reasoning: null,
+                created_at: Date.now(),
+              feed: feed.label,
+              })
+            }
           }
         }
 
-        return events
+        return allEvents
       } catch (err) {
         log.error("failed to poll Jira", { error: err })
         return []
@@ -370,7 +370,6 @@ function buildChangelogSummary(field: string, item: ChangelogItem): string {
 function extractContent(result: unknown): unknown {
   if (!result || typeof result !== "object") return result
   const r = result as Record<string, unknown>
-  // MCP responses may have structuredContent (preferred) or content[].text
   if ("structuredContent" in r && r.structuredContent) {
     const sc = r.structuredContent as Record<string, unknown>
     if (typeof sc.result === "string") return sc.result
