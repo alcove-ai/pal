@@ -300,14 +300,25 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   })
 
-  // Tab switching: Ctrl+1..5 switch tabs when no dialog is open and keybinds are not suspended
+  // Tab switching: bare number keys on non-Agent tabs, or Alt+number from any tab
   useKeyboard((evt) => {
     if (dialog.stack.length > 0) return
     if (command.suspended()) return
     if (evt.defaultPrevented) return
-    if (!evt.ctrl) return
+    if (evt.ctrl || evt.shift) return
+
     const num = parseInt(evt.name ?? "", 10)
-    if (num >= 1 && num <= getTabCount()) {
+    if (num < 1 || num > getTabCount()) return
+
+    // Alt+number always works from any tab
+    if (evt.meta) {
+      evt.preventDefault()
+      setActiveTab(num)
+      return
+    }
+
+    // Bare number keys only work from non-Agent tabs (Agent tab has text input)
+    if (activeTab() !== 1) {
       evt.preventDefault()
       setActiveTab(num)
     }
