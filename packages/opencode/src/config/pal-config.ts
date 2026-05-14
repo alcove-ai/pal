@@ -159,6 +159,7 @@ function loadFromDisk(configPath: string): PalConfig {
               label: f.label,
               jql: f.jql,
               ...(typeof f.weight === "number" ? { weight: f.weight } : {}),
+              ...((f as any).mode === "own" || (f as any).mode === "watch" ? { mode: (f as any).mode } : {}),
             }))
         }
 
