@@ -822,6 +822,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
+  // Automatically switch to Agent tab (tab 1) when navigating to a session
+  createEffect(() => {
+    if (route.data.type === "session") {
+      setActiveTab(1)
+    }
+  })
+
   event.on("session.deleted", (evt) => {
     if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
       route.navigate({ type: "home" })
