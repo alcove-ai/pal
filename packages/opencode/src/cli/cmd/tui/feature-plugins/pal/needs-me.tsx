@@ -58,10 +58,70 @@ function upsertSuppression(ruleSource: string, dismissCount: number): void {
   const now = Date.now()
   try { Database.use((db) => { db.insert(SuppressionPatternTable).values({ id: Identifier.create("nms", "ascending"), rule_source: ruleSource, dismiss_count: dismissCount, created_at: now, last_matched_at: now }).onConflictDoUpdate({ target: SuppressionPatternTable.rule_source, set: { dismiss_count: dismissCount, last_matched_at: now } }).run() }) } catch {}
 }
+function detectProcessGaps(events: ActivityEvent[]): NeedsMeItem[] {
+  const seen = new Set<string>()
+  const gaps: NeedsMeItem[] = []
+  for (const event of events) {
+    if (event.source !== "jira") continue
+    if (event.mode === "watch") continue
+    if (seen.has(event.source_id)) continue
+    seen.add(event.source_id)
+
+    const meta = event.metadata as Record<string, unknown> | undefined
+    if (!meta) continue
+    const issueType = meta.issue_type as string | undefined
+    const description = meta.description as string | undefined
+    if (!issueType) continue
+
+    const hasProblem = description && /h[23]\.\s*Problem\s+Statement/i.test(description)
+    const hasScope = description && /h2\.\s*Scope\s+of\s+Work/i.test(description)
+    const isEpic = issueType === "Epic"
+
+    let rule = ""
+    let need = ""
+    let score = 0
+    if (!hasProblem) {
+      rule = "process_needs_problem"
+      need = "Write statement"
+      score = 30
+    } else if (isEpic && !hasScope) {
+      rule = "process_needs_scope"
+      need = "Write scope"
+      score = 25
+    } else {
+      continue
+    }
+
+    gaps.push({
+      id: `process_${event.source_id}`,
+      workItemKey: event.source_id,
+      tier: 2 as 1 | 2,
+      rule,
+      ruleSource: `${rule}:jira`,
+      score,
+      scoreBreakdown: `process:${need}`,
+      title: event.title,
+      url: event.url,
+      actor: event.actor,
+      timestamp: event.timestamp,
+      sources: ["jira"],
+      eventIds: [event.id],
+      isBlocking: false,
+      domains: [],
+      isExemptFromSuppression: false,
+      metadata: meta ?? null,
+    })
+  }
+  return gaps
+}
+
 function computeFilteredQueue(config: NeedsMeConfig): NeedsMeItem[] {
-  const events = loadRecentEvents(); const { items } = classify(events, config)
+  const events = loadRecentEvents()
+  const { items } = classify(events, config)
+  const processGaps = detectProcessGaps(events)
+  const allItems = [...items, ...processGaps].sort((a, b) => b.score - a.score)
   const dismissed = getDismissedKeys(); const snoozed = getSnoozedKeys(); const suppressed = getSuppressedRuleSources()
-  return items.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
+  return allItems.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
 }
 
 function NeedsMeView(props: { api: TuiPluginApi }) {
