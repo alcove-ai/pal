@@ -300,12 +300,12 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   })
 
-  // Tab switching: number keys 1-5 switch tabs when no dialog is open and keybinds are not suspended
+  // Tab switching: Ctrl+1..5 switch tabs when no dialog is open and keybinds are not suspended
   useKeyboard((evt) => {
     if (dialog.stack.length > 0) return
     if (command.suspended()) return
     if (evt.defaultPrevented) return
-    if (evt.ctrl || evt.meta || evt.shift) return
+    if (!evt.ctrl) return
     const num = parseInt(evt.name ?? "", 10)
     if (num >= 1 && num <= getTabCount()) {
       evt.preventDefault()

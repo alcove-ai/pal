@@ -40,7 +40,7 @@ export function TabBar(props: { activeTab: number }) {
                   bg={isActive() ? theme.primary : undefined}
                   attributes={isActive() ? TextAttributes.BOLD : undefined}
                 >
-                  {` [${tab.key}] ${tab.label} `}
+                  {` [^${tab.key}] ${tab.label} `}
                 </text>
               )
             }}
