@@ -16,6 +16,10 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
+// Additive instruction files are always loaded alongside the primary instruction file
+// (they bypass the first-match-wins logic of FILES).
+const ADDITIVE_FILES = ["PAL_PREFERENCES.md"]
+
 function extract(messages: MessageV2.WithParts[]) {
   const paths = new Set<string>()
   for (const msg of messages) {
@@ -126,6 +130,19 @@ export const layer: Layer.Layer<
         }
       }
 
+      // Additive instruction files are always loaded (no first-match-wins).
+      // Check both the directory walk (findUp) and the .opencode/ config directory.
+      if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+        for (const file of ADDITIVE_FILES) {
+          const matches = yield* fs.findUp(file, ctx.directory, ctx.worktree)
+          matches.forEach((item) => paths.add(path.resolve(item)))
+          const dotOpencodePath = path.join(ctx.worktree, ".opencode", file)
+          if (yield* fs.existsSafe(dotOpencodePath)) {
+            paths.add(path.resolve(dotOpencodePath))
+          }
+        }
+      }
+
       if (config.instructions) {
         for (const raw of config.instructions) {
           if (raw.startsWith("https://") || raw.startsWith("http://")) continue
@@ -163,7 +180,7 @@ export const layer: Layer.Layer<
     })
 
     const find = Effect.fn("Instruction.find")(function* (dir: string) {
-      for (const file of FILES) {
+      for (const file of [...FILES, ...ADDITIVE_FILES]) {
         const filepath = path.resolve(path.join(dir, file))
         if (yield* fs.existsSafe(filepath)) return filepath
       }

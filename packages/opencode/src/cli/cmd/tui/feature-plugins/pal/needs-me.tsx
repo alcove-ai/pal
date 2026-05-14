@@ -12,6 +12,7 @@ import { SNOOZE_DURATIONS, type SnoozeDuration } from "@/needs-me"
 import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
+import { recordTriageDecision } from "@/needs-me/decisions"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 30_000
@@ -93,6 +94,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
 
   function handleDismiss(item: NeedsMeItem) {
     insertDismissal(item.workItemKey, item.ruleSource, "dismiss", null)
+    recordTriageDecision(item, "dismiss")
     const count = countDismissalsForRuleSource(item.ruleSource)
     if (count >= AUTO_SUPPRESS_THRESHOLD) upsertSuppression(item.ruleSource, count)
     refresh()
@@ -120,12 +122,39 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     const sessionID = result.data.id
     triageSessionMap.set(item.workItemKey, sessionID)
 
+    // Build decision history context
+    let history = ""
+    try {
+      const rows = Database.use((db) => {
+        return (db as any).all(
+          `SELECT action, action_detail, decided_at FROM needs_me_triage_decision WHERE rule_source = ? ORDER BY decided_at DESC LIMIT 5`,
+          item.ruleSource,
+        )
+      })
+      if (rows && rows.length > 0) {
+        const lines = rows.map((r: any) => `- ${r.action}${r.action_detail ? ` (${r.action_detail})` : ""}`)
+        history = `\n\nPast decisions for similar items (${item.ruleSource}):\n${lines.join("\n")}`
+      }
+    } catch {}
+
+    recordTriageDecision(item, "triage_started", undefined, sessionID)
+
     // Send initial context
     await props.api.client.session.prompt({
       sessionID,
       parts: [{
         type: "text" as const,
-        text: `Triage this item from my Needs Me queue:\n\nTitle: ${item.title}\nSource: ${item.sources.join(", ")}\nScore: ${item.score}\nTier: ${item.tier}\nBlocking: ${item.isBlocking}\nURL: ${item.url ?? "none"}\n\nPlease fetch the full details and tell me what action is needed.`,
+        text: `Triage this item from my Needs Me queue:
+
+Title: ${item.title}
+Source: ${item.sources.join(", ")}
+Score: ${item.score} (${item.scoreBreakdown})
+Tier: ${item.tier} | Rule: ${item.rule}
+Blocking: ${item.isBlocking}
+URL: ${item.url ?? "none"}
+Actor: ${item.actor ?? "unknown"}${history}
+
+Please fetch the full details and tell me what action is needed.`,
       }],
     })
 
