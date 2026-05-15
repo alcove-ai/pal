@@ -381,8 +381,15 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
         log.error("failed to prune on startup", { error: err })
       }
 
-      // Run first poll immediately
-      void runPollCycle()
+      // Run first poll, then trigger LLM sweep
+      void runPollCycle().then(async () => {
+        try {
+          const { runFullSweep } = await import("@/sweep/sweep")
+          await runFullSweep()
+        } catch (err) {
+          log.info("sweep skipped or failed", { error: err })
+        }
+      })
 
       log.info("activity feed started", { adapters: adapters.map((a) => a.source) })
     })

@@ -3,18 +3,16 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "@tui/context/theme"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
 import { Database } from "@/storage/db"
-import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
 import { DismissedEventTable, SuppressionPatternTable } from "@/needs-me/needs-me.sql"
-import { desc, eq, and, gt, sql } from "drizzle-orm"
-import type { ActivityEvent } from "@/activity-feed/types"
-import { classify, type NeedsMeItem, type NeedsMeConfig } from "@/needs-me/classifier"
+import { eq, and, gt, sql } from "drizzle-orm"
 import { SNOOZE_DURATIONS, type SnoozeDuration } from "@/needs-me"
 import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
-import { enrichWithProcessState, buildFacilitationPrompt, type ProcessEnrichedItem } from "@/needs-me/process-enrichment"
-import { assess, type IssueInput } from "@/process/assessor"
+import { getSweepResults } from "@/sweep/sweep"
+import { get as getRole } from "@/config/role"
+import { load as loadProcessDoc } from "@/process/process-doc"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 30_000
@@ -23,6 +21,22 @@ const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
 const SUPPRESSION_DECAY_MS = 30 * 24 * 60 * 60 * 1000
 
+type SweepResult = {
+  source_id: string
+  source: string
+  title: string
+  summary: string
+  action: string
+  priority: string
+  phase: string | null
+  url: string | null
+  actor: string | null
+  last_event_ts: number
+  swept_at: number
+  feed: string | null
+  mode: string | null
+}
+
 function formatTimestamp(ts: number): string {
   const now = Date.now(); const diff = now - ts
   if (diff < 60_000) return "just now"; if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
@@ -30,159 +44,50 @@ function formatTimestamp(ts: number): string {
   const date = new Date(ts); return `${date.getMonth() + 1}/${date.getDate()}`
 }
 function formatLastChecked(ts: number | null): string { return ts === null ? "never" : formatTimestamp(ts) }
-function tierBadge(tier: 1 | 2): string { return tier === 1 ? "T1" : "T2" }
-function sourceBadges(sources: string[]): string {
-  return sources.map((s) => { switch (s) { case "jira": return "J"; case "github": return "G"; case "gitlab": return "L"; default: return "?" } }).join("")
-}
-function scoreColor(score: number, theme: any): string {
-  if (score >= 60) return theme.error ?? theme.primary; if (score >= 35) return theme.warning ?? theme.primary; return theme.info ?? theme.primary
-}
-function phaseThemeColor(phaseColor: ProcessEnrichedItem["phaseColor"], theme: any): string {
-  switch (phaseColor) {
-    case "error": return theme.error ?? theme.primary
-    case "warning": return theme.warning ?? theme.primary
-    case "info": return theme.info ?? theme.primary
-    case "success": return theme.success ?? theme.primary
+
+function priorityColor(priority: string, theme: any): string {
+  switch (priority) {
+    case "urgent": return theme.error ?? theme.primary
+    case "soon": return theme.warning ?? theme.primary
+    case "normal": return theme.info ?? theme.primary
+    case "low": return theme.textMuted
     default: return theme.textMuted
   }
 }
-function phaseLabel(phase: string | null): string {
-  if (!phase) return "—"
-  switch (phase) {
-    case "problem": return "Problem"
-    case "spec": return "Spec"
-    case "plan": return "Plan"
-    case "ready": return "Ready"
-    default: return phase
-  }
-}
 
-function loadRecentEvents(): ActivityEvent[] {
-  try { return Database.use((db) => db.select().from(ActivityEventTable).orderBy(desc(ActivityEventTable.timestamp)).limit(500).all() as ActivityEvent[]) } catch { return [] }
-}
 function getDismissedKeys(): Set<string> {
   try { return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key }).from(DismissedEventTable).where(eq(DismissedEventTable.action, "dismiss")).all(); return new Set(rows.map((r) => r.work_item_key)) }) } catch { return new Set() }
 }
 function getSnoozedKeys(): Map<string, number> {
   try { const now = Date.now(); return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key, snooze_until: DismissedEventTable.snooze_until }).from(DismissedEventTable).where(and(eq(DismissedEventTable.action, "snooze"), gt(DismissedEventTable.snooze_until, now))).all(); const map = new Map<string, number>(); for (const r of rows) { if (r.snooze_until) map.set(r.work_item_key, r.snooze_until) }; return map }) } catch { return new Map() }
 }
-function getSuppressedRuleSources(): Set<string> {
-  try { const cutoff = Date.now() - SUPPRESSION_DECAY_MS; return Database.use((db) => { const rows = db.select({ rule_source: SuppressionPatternTable.rule_source }).from(SuppressionPatternTable).where(gt(SuppressionPatternTable.last_matched_at, cutoff)).all(); return new Set(rows.map((r) => r.rule_source)) }) } catch { return new Set() }
-}
-function insertDismissal(workItemKey: string, ruleSource: string, action: "dismiss" | "snooze", snoozeUntil: number | null): void {
-  try { Database.use((db) => { db.insert(DismissedEventTable).values({ id: Identifier.create("nmd", "ascending"), work_item_key: workItemKey, action, snooze_until: snoozeUntil, rule_source: ruleSource, dismissed_at: Date.now() }).run() }) } catch {}
-}
-function countDismissalsForRuleSource(ruleSource: string): number {
-  try { return Database.use((db) => { const result = db.select({ count: sql<number>`count(*)` }).from(DismissedEventTable).where(and(eq(DismissedEventTable.rule_source, ruleSource), eq(DismissedEventTable.action, "dismiss"))).get(); return result?.count ?? 0 }) } catch { return 0 }
-}
-function upsertSuppression(ruleSource: string, dismissCount: number): void {
-  const now = Date.now()
-  try { Database.use((db) => { db.insert(SuppressionPatternTable).values({ id: Identifier.create("nms", "ascending"), rule_source: ruleSource, dismiss_count: dismissCount, created_at: now, last_matched_at: now }).onConflictDoUpdate({ target: SuppressionPatternTable.rule_source, set: { dismiss_count: dismissCount, last_matched_at: now } }).run() }) } catch {}
-}
-function detectProcessGaps(events: ActivityEvent[]): NeedsMeItem[] {
-  const seen = new Set<string>()
-  const gaps: NeedsMeItem[] = []
 
-  for (const event of events) {
-    if (event.source !== "jira") continue
-    if (event.mode === "watch") continue
-    if (seen.has(event.source_id)) continue
-    seen.add(event.source_id)
-
-    const meta = event.metadata as Record<string, unknown> | undefined
-    if (!meta) continue
-
-    const issueType = meta.issue_type as string | undefined
-    const description = meta.description as string | undefined
-    const summary = meta.summary as string | undefined
-    const labels = meta.labels as string[] | undefined
-
-    if (!issueType) continue
-
-    // Build IssueInput for the assessor
-    const issueInput: IssueInput = {
-      key: event.source_id,
-      summary: summary ?? event.title,
-      issueType,
-      description: description ?? null,
-      labels: labels ?? [],
-    }
-
-    // Use the assessor to check process state
-    const assessment = assess(issueInput)
-
-    // Skip if exempted or ready
-    if (assessment.exemptionReason || assessment.phase === "ready") {
-      continue
-    }
-
-    // Map assessment phase to Needs Me item
-    let rule = ""
-    let need = ""
-    let score = 0
-
-    if (assessment.phase === "needs_problem") {
-      rule = "process_needs_problem"
-      need = "Write statement"
-      score = 30
-    } else if (assessment.phase === "needs_scope") {
-      rule = "process_needs_scope"
-      need = "Write scope"
-      score = 25
-    } else {
-      // "has_problem" or other intermediate states — skip for now
-      continue
-    }
-
-    gaps.push({
-      id: `process_${event.source_id}`,
-      workItemKey: event.source_id,
-      tier: 2 as 1 | 2,
-      rule,
-      ruleSource: `${rule}:jira`,
-      score,
-      scoreBreakdown: `process:${need}`,
-      title: event.title,
-      url: event.url,
-      actor: event.actor,
-      timestamp: event.timestamp,
-      sources: ["jira"],
-      eventIds: [event.id],
-      isBlocking: false,
-      domains: [],
-      isExemptFromSuppression: false,
-      metadata: meta ?? null,
-    })
-  }
-  return gaps
-}
-
-function computeFilteredQueue(config: NeedsMeConfig): ProcessEnrichedItem[] {
-  const events = loadRecentEvents()
-  const { items } = classify(events, config)
-  const processGaps = detectProcessGaps(events)
-  const allItems = [...items, ...processGaps].sort((a, b) => b.score - a.score)
-  const dismissed = getDismissedKeys(); const snoozed = getSnoozedKeys(); const suppressed = getSuppressedRuleSources()
-  const filtered = allItems.filter((item) => { if (dismissed.has(item.workItemKey)) return false; if (snoozed.has(item.workItemKey)) return false; if (suppressed.has(item.ruleSource) && !item.isExemptFromSuppression) return false; return true })
-  return enrichWithProcessState(filtered)
+function computeFilteredQueue(): SweepResult[] {
+  const results = getSweepResults()
+  const dismissed = getDismissedKeys()
+  const snoozed = getSnoozedKeys()
+  return results.filter((item) => {
+    if (dismissed.has(item.source_id)) return false
+    if (snoozed.has(item.source_id)) return false
+    return true
+  })
 }
 
 function NeedsMeView(props: { api: TuiPluginApi }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
-  const [queue, setQueue] = createSignal<ProcessEnrichedItem[]>([])
+  const [queue, setQueue] = createSignal<SweepResult[]>([])
   const [lastChecked, setLastChecked] = createSignal<number | null>(null)
   const [overflowAlert, setOverflowAlert] = createSignal(false)
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
-  const config: NeedsMeConfig = {}
 
-  // Track triage sessions: workItemKey -> sessionID
+  // Track triage sessions: source_id -> sessionID
   const triageSessionMap = new Map<string, string>()
 
   function refresh() {
-    const items = computeFilteredQueue(config); setQueue(items); setLastChecked(Date.now())
+    const items = computeFilteredQueue(); setQueue(items); setLastChecked(Date.now())
     const now = Date.now()
     if (items.length > OVERFLOW_THRESHOLD) {
       const since = overflowSince()
@@ -195,75 +100,79 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     }
   }
 
-  function handleDismiss(enriched: ProcessEnrichedItem) {
-    const item = enriched.item
-    insertDismissal(item.workItemKey, item.ruleSource, "dismiss", null)
-    recordTriageDecision(item, "dismiss")
-    const count = countDismissalsForRuleSource(item.ruleSource)
-    if (count >= AUTO_SUPPRESS_THRESHOLD) upsertSuppression(item.ruleSource, count)
+  function handleDismiss(item: SweepResult) {
+    const ruleSource = `sweep:${item.source}:${item.priority}`
+    try {
+      Database.use((db) => {
+        db.insert(DismissedEventTable).values({
+          id: Identifier.create("nmd", "ascending"),
+          work_item_key: item.source_id,
+          action: "dismiss",
+          snooze_until: null,
+          rule_source: ruleSource,
+          dismissed_at: Date.now(),
+        }).run()
+      })
+    } catch {}
     refresh()
   }
-  function handleSnooze(enriched: ProcessEnrichedItem, duration: SnoozeDuration) {
-    const item = enriched.item
+  function handleSnooze(item: SweepResult, duration: SnoozeDuration) {
+    const ruleSource = `sweep:${item.source}:${item.priority}`
     const snoozeUntil = Date.now() + SNOOZE_DURATIONS[duration]
-    insertDismissal(item.workItemKey, item.ruleSource, "snooze", snoozeUntil); refresh()
+    try {
+      Database.use((db) => {
+        db.insert(DismissedEventTable).values({
+          id: Identifier.create("nmd", "ascending"),
+          work_item_key: item.source_id,
+          action: "snooze",
+          snooze_until: snoozeUntil,
+          rule_source: ruleSource,
+          dismissed_at: Date.now(),
+        }).run()
+      })
+    } catch {}
+    refresh()
   }
   void handleSnooze
 
-  async function launchTriageSession(enriched: ProcessEnrichedItem) {
-    const item = enriched.item
-
+  async function launchTriageSession(item: SweepResult) {
     // Resume existing triage session if one exists for this item
-    const existingSessionID = triageSessionMap.get(item.workItemKey)
+    const existingSessionID = triageSessionMap.get(item.source_id)
     if (existingSessionID) {
       props.api.route.navigate("session", { sessionID: existingSessionID })
       return
     }
 
     // Create new session
-    const phaseSuffix = enriched.processPhase ? ` [${enriched.processPhase}]` : ""
+    const phaseSuffix = item.phase ? ` [${item.phase}]` : ""
     const result = await props.api.client.session.create({
       title: `Triage${phaseSuffix}: ${item.title.slice(0, 50)}`,
     })
     if (!result.data?.id) return
 
     const sessionID = result.data.id
-    triageSessionMap.set(item.workItemKey, sessionID)
+    triageSessionMap.set(item.source_id, sessionID)
 
-    // Build decision history context
-    let history = ""
-    try {
-      const rows = Database.use((db) => {
-        return (db as any).all(
-          `SELECT action, action_detail, decided_at FROM needs_me_triage_decision WHERE rule_source = ? ORDER BY decided_at DESC LIMIT 5`,
-          item.ruleSource,
-        )
-      })
-      if (rows && rows.length > 0) {
-        const lines = rows.map((r: any) => `- ${r.action}${r.action_detail ? ` (${r.action_detail})` : ""}`)
-        history = `\n\nPast decisions for similar items (${item.ruleSource}):\n${lines.join("\n")}`
-      }
-    } catch {}
-
-    recordTriageDecision(item, "triage_started", undefined, sessionID)
-
-    // Build phase-specific facilitation prompt
-    const facilitationPrompt = buildFacilitationPrompt(enriched)
+    // Load process doc and role for context
+    const processDoc = loadProcessDoc() ?? "No process document configured."
+    const role = getRole() ?? "No role configured."
 
     // Send initial context
     await props.api.client.session.prompt({
       sessionID,
       parts: [{
         type: "text" as const,
-        text: `${facilitationPrompt}
+        text: `Process context from your team's process document:
+${processDoc}
 
-Title: ${item.title}
-Source: ${item.sources.join(", ")}
-Score: ${item.score} (${item.scoreBreakdown})
-Tier: ${item.tier} | Rule: ${item.rule}
-Blocking: ${item.isBlocking}
+Your role: ${role}
+
+Issue: ${item.title}
 URL: ${item.url ?? "none"}
-Actor: ${item.actor ?? "unknown"}${history}`,
+Current state: ${item.summary}
+Recommended action: ${item.action}
+
+Help me take this action. Fetch the full issue details first.`,
       }],
     })
 
@@ -302,7 +211,7 @@ Actor: ${item.actor ?? "unknown"}${history}`,
       const idx = selectedIndex()
       const offset = scrollOffset()
       const vh = visibleHeight()
-      // Each item takes 2 rows (title + breakdown)
+      // Each item takes 3 rows (title + summary + action)
       if (idx >= offset + vh) setScrollOffset(idx - vh + 1)
       return
     }
@@ -310,16 +219,16 @@ Actor: ${item.actor ?? "unknown"}${history}`,
     // Enter: launch triage session
     if (name === "return") {
       evt.preventDefault()
-      const enriched = items[selectedIndex()]
-      if (enriched) void launchTriageSession(enriched)
+      const item = items[selectedIndex()]
+      if (item) void launchTriageSession(item)
       return
     }
 
     // d: dismiss selected item
     if (name === "d") {
       evt.preventDefault()
-      const enriched = items[selectedIndex()]
-      if (enriched) handleDismiss(enriched)
+      const item = items[selectedIndex()]
+      if (item) handleDismiss(item)
       return
     }
   })
@@ -329,7 +238,13 @@ Actor: ${item.actor ?? "unknown"}${history}`,
   onMount(() => { refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS) })
   onCleanup(() => { if (refreshTimer) clearInterval(refreshTimer) })
 
-  const visibleHeight = () => Math.max(dimensions().height - 6, 1)
+  const visibleHeight = () => {
+    // Each item takes 3 rows, header takes 3 rows, footer takes 1 row, overflow alert takes 1 row (optional)
+    const headerRows = overflowAlert() ? 4 : 3
+    const footerRows = 1
+    const availableRows = Math.max(dimensions().height - headerRows - footerRows, 3)
+    return Math.floor(availableRows / 3)
+  }
   const visibleItems = () => {
     const all = queue(); const offset = scrollOffset()
     if (overflowAlert() && all.length > OVERFLOW_THRESHOLD) { const pinned = all.slice(0, 10); const rest = all.slice(10); return { pinned, collapsed: rest, collapsedCount: rest.length } }
@@ -352,12 +267,10 @@ Actor: ${item.actor ?? "unknown"}${history}`,
       </Show>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <box width={2} flexShrink={0} />
-        <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Score</text></box>
-        <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Tier</text></box>
-        <box width={4} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
-        <box width={9} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Phase</text></box>
+        <box width={6} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Prty</text></box>
+        <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Phase</text></box>
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
-        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title / Need</text></box>
+        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title</text></box>
         <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
       <Show when={queue().length > 0} fallback={
@@ -369,31 +282,29 @@ Actor: ${item.actor ?? "unknown"}${history}`,
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">
           <For each={visibleItems().pinned}>
-            {(enriched, index) => {
-              const item = enriched.item
-              const sc = () => scoreColor(item.score, theme)
-              const maxTitleWidth = () => Math.max(dimensions().width - 50, 10)
+            {(item, index) => {
+              const pc = () => priorityColor(item.priority, theme)
+              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
               const isSelected = () => {
                 const offset = scrollOffset()
                 return index() + offset === selectedIndex()
               }
-              const hasTriage = () => triageSessionMap.has(item.workItemKey)
-              const pc = () => phaseThemeColor(enriched.phaseColor, theme)
+              const hasTriage = () => triageSessionMap.has(item.source_id)
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{isSelected() ? "> " : "  "}</text></box>
-                    <box width={5} flexShrink={0}><text fg={sc()} attributes={TextAttributes.BOLD}>{String(item.score).padStart(3)}</text></box>
-                    <box width={4} flexShrink={0}><text fg={item.tier === 1 ? (theme.warning ?? theme.primary) : theme.textMuted}>{tierBadge(item.tier)}</text></box>
-                    <box width={4} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceBadges(item.sources)}</text></box>
-                    <box width={9} flexShrink={0}><text fg={pc()} attributes={TextAttributes.BOLD}>{phaseLabel(enriched.processPhase).padEnd(7)}</text></box>
-                    <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.timestamp)}</text></box>
-                    <box flexGrow={1}><text fg={item.isBlocking ? (theme.error ?? theme.text) : theme.text}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box width={6} flexShrink={0}><text fg={pc()} attributes={TextAttributes.BOLD}>{item.priority.padEnd(6)}</text></box>
+                    <box width={8} flexShrink={0}><text fg={theme.textMuted}>{(item.phase ?? "—").padEnd(8).slice(0, 8)}</text></box>
+                    <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
+                    <box flexGrow={1}><text fg={theme.text}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
-                  <box height={1} flexDirection="row" paddingLeft={8}>
-                    <text fg={pc()}>{enriched.processNeed ? `${enriched.processNeed}  ` : ""}</text>
-                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.scoreBreakdown}</text>
+                  <box height={1} flexDirection="row" paddingLeft={10}>
+                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.summary}</text>
+                  </box>
+                  <box height={1} flexDirection="row" paddingLeft={10}>
+                    <text fg={pc()}>{item.action}</text>
                   </box>
                 </box>
               )
