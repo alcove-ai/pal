@@ -14,6 +14,7 @@ import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
 import { enrichWithProcessState, buildFacilitationPrompt, type ProcessEnrichedItem } from "@/needs-me/process-enrichment"
+import { assess, type IssueInput } from "@/process/assessor"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 30_000
@@ -81,6 +82,7 @@ function upsertSuppression(ruleSource: string, dismissCount: number): void {
 function detectProcessGaps(events: ActivityEvent[]): NeedsMeItem[] {
   const seen = new Set<string>()
   const gaps: NeedsMeItem[] = []
+
   for (const event of events) {
     if (event.source !== "jira") continue
     if (event.mode === "watch") continue
@@ -89,26 +91,46 @@ function detectProcessGaps(events: ActivityEvent[]): NeedsMeItem[] {
 
     const meta = event.metadata as Record<string, unknown> | undefined
     if (!meta) continue
+
     const issueType = meta.issue_type as string | undefined
     const description = meta.description as string | undefined
+    const summary = meta.summary as string | undefined
+    const labels = meta.labels as string[] | undefined
+
     if (!issueType) continue
 
-    const hasProblem = description && /h[23]\.\s*Problem\s+Statement/i.test(description)
-    const hasScope = description && /h2\.\s*Scope\s+of\s+Work/i.test(description)
-    const isEpic = issueType === "Epic"
+    // Build IssueInput for the assessor
+    const issueInput: IssueInput = {
+      key: event.source_id,
+      summary: summary ?? event.title,
+      issueType,
+      description: description ?? null,
+      labels: labels ?? [],
+    }
 
+    // Use the assessor to check process state
+    const assessment = assess(issueInput)
+
+    // Skip if exempted or ready
+    if (assessment.exemptionReason || assessment.phase === "ready") {
+      continue
+    }
+
+    // Map assessment phase to Needs Me item
     let rule = ""
     let need = ""
     let score = 0
-    if (!hasProblem) {
+
+    if (assessment.phase === "needs_problem") {
       rule = "process_needs_problem"
       need = "Write statement"
       score = 30
-    } else if (isEpic && !hasScope) {
+    } else if (assessment.phase === "needs_scope") {
       rule = "process_needs_scope"
       need = "Write scope"
       score = 25
     } else {
+      // "has_problem" or other intermediate states — skip for now
       continue
     }
 
