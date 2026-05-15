@@ -319,7 +319,14 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       return
     }
 
-    // Tab key cycles forward on non-Agent tabs
+    // Shift+Tab cycles backward from any tab
+    if (evt.name === "tab" && evt.shift && !evt.ctrl && !evt.meta) {
+      evt.preventDefault()
+      setActiveTab(((activeTab() - 2 + count) % count) + 1)
+      return
+    }
+
+    // Tab cycles forward on non-Agent tabs
     if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta && activeTab() !== 1) {
       evt.preventDefault()
       setActiveTab((activeTab() % count) + 1)
