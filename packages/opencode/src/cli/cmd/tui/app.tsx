@@ -326,8 +326,8 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       return
     }
 
-    // Tab cycles forward from any tab
-    if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta) {
+    // Tab cycles forward on dashboard tabs (not Agent tab where it's used for autocomplete)
+    if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta && activeTab() !== 1) {
       evt.preventDefault()
       setActiveTab((activeTab() % count) + 1)
     }
@@ -562,6 +562,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       keybind: "agent_cycle",
       category: "Agent",
       hidden: true,
+      get enabled() { return activeTab() === 1 },
       onSelect: () => {
         local.agent.move(1)
       },
@@ -594,6 +595,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       keybind: "agent_cycle_reverse",
       category: "Agent",
       hidden: true,
+      get enabled() { return activeTab() === 1 },
       onSelect: () => {
         local.agent.move(-1)
       },
