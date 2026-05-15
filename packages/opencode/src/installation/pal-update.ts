@@ -122,57 +122,47 @@ async function fetchBinary(url: string): Promise<Buffer | null> {
  * Check for updates and auto-apply if possible.
  * This function is fire-and-forget; it never throws.
  */
-export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<void> {
+export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<boolean> {
   const say = (msg: string) => { if (opts?.verbose) process.stderr.write(msg) }
   try {
-    // Skip if disabled via env
     if (process.env.PAL_NO_UPDATE_CHECK === "1") {
       log.debug("update check disabled via PAL_NO_UPDATE_CHECK")
-      return
+      return false
     }
 
-    // Skip if running from source
     if (isDevMode()) {
       log.debug("update check skipped in dev mode")
-      return
+      return false
     }
 
-    // Current version
     const current = InstallationVersion
     if (!semver.valid(current)) {
       log.debug("current version is not valid semver, skipping", { current })
-      return
+      return false
     }
 
-    // Fetch remote version
     const remoteVersion = await fetchText(VERSION_URL)
     if (!remoteVersion || !semver.valid(remoteVersion)) {
       say("Could not reach update server\n")
-      log.debug("could not fetch or parse remote version", { remoteVersion })
-      return
+      return false
     }
 
-    // Compare
     if (!semver.gt(remoteVersion, current)) {
       say(`Already up to date (v${current})\n`)
-      log.debug("already up to date", { current, remote: remoteVersion })
-      return
+      return false
     }
 
     say(`Update available: v${current} → v${remoteVersion}\n`)
     log.info("newer version available", { current, remote: remoteVersion })
 
-    // Determine platform binary name
     const assetName = getPlatformAssetName()
     if (!assetName) {
       log.info("unsupported platform for auto-update", { platform: os.platform(), arch: os.arch() })
-      return
+      return false
     }
 
     const binaryUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}`
     const checksumUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}.sha256`
-
-    // Check if we can write to the current binary location
     const execPath = process.execPath
     const execDir = path.dirname(execPath)
 
@@ -188,11 +178,9 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<void
     if (!writable) {
       say(`Cannot write to ${execPath} — run with sudo or update manually:\n`)
       say(`  curl -fSL "${binaryUrl}" -o "${execPath}" && chmod +x "${execPath}"\n`)
-      log.info("binary not writable, manual update needed", { execPath })
-      return
+      return false
     }
 
-    // Download binary and checksum
     say("Downloading...")
     log.info("downloading update", { binaryUrl, checksumUrl })
     const [binaryData, checksumData] = await Promise.all([fetchBinary(binaryUrl), fetchText(checksumUrl)])
@@ -200,21 +188,19 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<void
     if (!binaryData || !checksumData) {
       say(" failed\n")
       log.info("failed to download binary or checksum", { hasBinary: !!binaryData, hasChecksum: !!checksumData })
-      return
+      return false
     }
     say(" done\n")
 
-    // Verify checksum
     const expectedHash = checksumData.trim()
     const actualHash = sha256(binaryData)
 
     if (expectedHash !== actualHash) {
       say("Checksum mismatch — update aborted\n")
       log.warn("checksum mismatch, aborting update", { expected: expectedHash, actual: actualHash })
-      return
+      return false
     }
 
-    // Atomic update: write to temp file then rename(2)
     say("Applying update...")
     log.info("applying update", { execPath, size: binaryData.length })
     const tmpPath = execPath + `.update-${process.pid}`
@@ -222,25 +208,20 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<void
       fs.writeFileSync(tmpPath, binaryData, { mode: 0o755 })
       fs.renameSync(tmpPath, execPath)
     } catch (e) {
-      // Clean up temp file on failure
-      try {
-        fs.unlinkSync(tmpPath)
-      } catch {
-        // ignore cleanup errors
-      }
-
+      try { fs.unlinkSync(tmpPath) } catch {}
       say(" failed\n")
       log.info("auto-update write failed", { error: e instanceof Error ? e.message : String(e) })
-      return
+      return false
     }
 
     say(` updated to v${remoteVersion}\n`)
     _completedVersion = remoteVersion
     for (const cb of _listeners) cb(remoteVersion)
-    log.info("auto-update complete, restart to apply", { version: remoteVersion })
+    log.info("auto-update complete", { version: remoteVersion })
+    return true
   } catch (e) {
-    // Catch-all: never let update check crash the app
     log.info("update check failed", { error: e instanceof Error ? e.message : String(e) })
+    return false
   }
 }
 

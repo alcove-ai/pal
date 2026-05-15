@@ -94,7 +94,14 @@ const cli = yargs(args)
   .middleware(async (opts) => {
     if (opts.upgrade) {
       const { checkForUpdate } = await import("./installation/pal-update")
-      await checkForUpdate({ verbose: true })
+      const updated = await checkForUpdate({ verbose: true })
+      if (updated) {
+        const { spawnSync } = await import("child_process")
+        const args = process.argv.slice(1).filter((a) => a !== "--upgrade")
+        process.stderr.write("Restarting with new version...\n")
+        const result = spawnSync(process.execPath, args, { stdio: "inherit" })
+        process.exit(result.status ?? 0)
+      }
     }
 
     if (opts.pure) {
