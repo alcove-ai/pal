@@ -300,19 +300,29 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     renderer.clearSelection()
   })
 
-  // Tab switching: Shift+Right = next tab, Shift+Left = previous tab
+  // Tab switching: Shift+Right/Left from any tab, Tab key from non-Agent tabs
   useKeyboard((evt) => {
     if (dialog.stack.length > 0) return
     if (command.suspended()) return
     if (evt.defaultPrevented) return
-    if (!evt.shift) return
-    if (evt.name !== "right" && evt.name !== "left") return
-    evt.preventDefault()
+
     const count = getTabCount()
-    if (evt.name === "right") {
+
+    // Shift+Arrow always works
+    if (evt.shift && (evt.name === "right" || evt.name === "left")) {
+      evt.preventDefault()
+      if (evt.name === "right") {
+        setActiveTab((activeTab() % count) + 1)
+      } else {
+        setActiveTab(((activeTab() - 2 + count) % count) + 1)
+      }
+      return
+    }
+
+    // Tab key cycles forward on non-Agent tabs
+    if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta && activeTab() !== 1) {
+      evt.preventDefault()
       setActiveTab((activeTab() % count) + 1)
-    } else {
-      setActiveTab(((activeTab() - 2 + count) % count) + 1)
     }
   })
 
