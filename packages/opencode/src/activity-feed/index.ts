@@ -245,9 +245,15 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
         const events = await adapter.poll()
 
         // Filter events to only those within our lookback window
+        const lookbackCutoff = now - FIRST_RUN_LOOKBACK_MS
         const filteredEvents = state
           ? events.filter((e) => e.timestamp >= (state.last_poll_ts ?? 0))
-          : events.filter((e) => e.timestamp >= now - FIRST_RUN_LOOKBACK_MS)
+          : events.filter((e) => e.timestamp >= lookbackCutoff)
+
+        if (events.length > 0 && filteredEvents.length === 0) {
+          const sample = events.slice(0, 3).map((e) => ({ ts: e.timestamp, title: e.title?.slice(0, 40), age_days: Math.round((now - e.timestamp) / 86400000) }))
+          log.info("all events filtered by lookback", { source, cutoff: new Date(lookbackCutoff).toISOString(), sample })
+        }
 
         const inserted = insertEvents(filteredEvents)
 
