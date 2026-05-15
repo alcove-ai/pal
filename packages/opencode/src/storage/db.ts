@@ -10,6 +10,7 @@ import { NamedError } from "@opencode-ai/core/util/error"
 import z from "zod"
 import path from "path"
 import { readFileSync, readdirSync, existsSync } from "fs"
+import { createHash } from "crypto"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { InstallationChannel } from "@opencode-ai/core/installation/version"
 import { InstanceState } from "@/effect/instance-state"
@@ -27,11 +28,16 @@ export const NotFoundError = NamedError.create(
 
 const log = Log.create({ service: "db" })
 
+function projectHash(): string {
+  return createHash("sha256").update(process.cwd()).digest("hex").slice(0, 12)
+}
+
 export function getChannelPath() {
+  const hash = projectHash()
   if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
-    return path.join(Global.Path.data, "opencode.db")
+    return path.join(Global.Path.data, `opencode-${hash}.db`)
   const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
-  return path.join(Global.Path.data, `opencode-${safe}.db`)
+  return path.join(Global.Path.data, `opencode-${safe}-${hash}.db`)
 }
 
 export const Path = iife(() => {
