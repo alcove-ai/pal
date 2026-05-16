@@ -163,7 +163,15 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<bool
 
     const binaryUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}`
     const checksumUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}.sha256`
-    const execPath = process.execPath
+    // process.execPath returns virtual path in Bun compiled binaries; use argv[0] or which
+    let execPath = process.argv[0] ?? process.execPath
+    if (execPath.includes("$bunfs") || execPath.includes("bunfs")) {
+      try {
+        execPath = fs.realpathSync(require("child_process").execSync("which pal", { encoding: "utf-8" }).trim())
+      } catch {
+        execPath = path.join(os.homedir(), ".local", "bin", "pal")
+      }
+    }
     const execDir = path.dirname(execPath)
 
     let writable = false

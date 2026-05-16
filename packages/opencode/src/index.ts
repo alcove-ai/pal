@@ -97,9 +97,10 @@ const cli = yargs(args)
       const updated = await checkForUpdate({ verbose: true })
       if (updated) {
         const { spawnSync } = await import("child_process")
+        const bin = process.argv[0] ?? "pal"
         const args = process.argv.slice(1).filter((a) => a !== "--upgrade")
         process.stderr.write("Restarting with new version...\n")
-        const result = spawnSync(process.execPath, args, { stdio: "inherit" })
+        const result = spawnSync(bin, args, { stdio: "inherit" })
         process.exit(result.status ?? 0)
       }
     }
