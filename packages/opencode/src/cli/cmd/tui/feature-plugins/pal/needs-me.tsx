@@ -4,13 +4,14 @@ import { useTheme } from "@tui/context/theme"
 import { createSignal, onMount, onCleanup, For, Show } from "solid-js"
 import { Database } from "@/storage/db"
 import { DismissedEventTable, SuppressionPatternTable } from "@/needs-me/needs-me.sql"
-import { eq, and, gt, sql } from "drizzle-orm"
+import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
+import { eq, and, gt, sql, desc } from "drizzle-orm"
 import { SNOOZE_DURATIONS, type SnoozeDuration } from "@/needs-me"
 import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
-import { getSweepResults } from "@/sweep/sweep"
+import { sweepSingle } from "@/sweep/sweep"
 import { get as getRole } from "@/config/role"
 import { load as loadProcessDoc } from "@/process/process-doc"
 
@@ -21,20 +22,15 @@ const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
 const SUPPRESSION_DECAY_MS = 30 * 24 * 60 * 60 * 1000
 
-type SweepResult = {
+type ActivityItem = {
   source_id: string
   source: string
   title: string
-  summary: string
-  action: string
-  priority: string
-  phase: string | null
   url: string | null
   actor: string | null
   last_event_ts: number
-  swept_at: number
-  feed: string | null
-  mode: string | null
+  event_type: string
+  summary: string | null
 }
 
 function formatTimestamp(ts: number): string {
@@ -45,14 +41,11 @@ function formatTimestamp(ts: number): string {
 }
 function formatLastChecked(ts: number | null): string { return ts === null ? "never" : formatTimestamp(ts) }
 
-function priorityColor(priority: string, theme: any): string {
-  switch (priority) {
-    case "urgent": return theme.error ?? theme.primary
-    case "soon": return theme.warning ?? theme.primary
-    case "normal": return theme.info ?? theme.primary
-    case "low": return theme.textMuted
-    default: return theme.textMuted
-  }
+function sourceChar(source: string): string {
+  if (source.toLowerCase().startsWith("jira")) return "J"
+  if (source.toLowerCase().startsWith("github")) return "G"
+  if (source.toLowerCase().startsWith("gitlab")) return "L"
+  return source.charAt(0).toUpperCase()
 }
 
 function getDismissedKeys(): Set<string> {
@@ -62,26 +55,63 @@ function getSnoozedKeys(): Map<string, number> {
   try { const now = Date.now(); return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key, snooze_until: DismissedEventTable.snooze_until }).from(DismissedEventTable).where(and(eq(DismissedEventTable.action, "snooze"), gt(DismissedEventTable.snooze_until, now))).all(); const map = new Map<string, number>(); for (const r of rows) { if (r.snooze_until) map.set(r.work_item_key, r.snooze_until) }; return map }) } catch { return new Map() }
 }
 
-function computeFilteredQueue(): SweepResult[] {
-  const results = getSweepResults()
-  const dismissed = getDismissedKeys()
-  const snoozed = getSnoozedKeys()
-  return results.filter((item) => {
-    if (dismissed.has(item.source_id)) return false
-    if (snoozed.has(item.source_id)) return false
-    return true
-  })
+function computeFilteredQueue(): ActivityItem[] {
+  try {
+    return Database.use((db) => {
+      // Get the latest event for each source_id
+      const rows = db
+        .select()
+        .from(ActivityEventTable)
+        .orderBy(desc(ActivityEventTable.timestamp))
+        .limit(1000)
+        .all()
+
+      // Group by source_id and take the latest event
+      const bySourceId = new Map<string, ActivityItem>()
+      for (const row of rows) {
+        if (!bySourceId.has(row.source_id)) {
+          bySourceId.set(row.source_id, {
+            source_id: row.source_id,
+            source: row.source,
+            title: row.title,
+            url: row.url,
+            actor: row.actor,
+            last_event_ts: row.timestamp,
+            event_type: row.event_type,
+            summary: row.summary,
+          })
+        }
+      }
+
+      // Filter out dismissed and snoozed items
+      const dismissed = getDismissedKeys()
+      const snoozed = getSnoozedKeys()
+      const items = Array.from(bySourceId.values()).filter((item) => {
+        if (dismissed.has(item.source_id)) return false
+        if (snoozed.has(item.source_id)) return false
+        return true
+      })
+
+      // Sort by timestamp descending
+      items.sort((a, b) => b.last_event_ts - a.last_event_ts)
+      return items
+    })
+  } catch {
+    return []
+  }
 }
 
 function NeedsMeView(props: { api: TuiPluginApi }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
-  const [queue, setQueue] = createSignal<SweepResult[]>([])
+  const [queue, setQueue] = createSignal<ActivityItem[]>([])
   const [lastChecked, setLastChecked] = createSignal<number | null>(null)
   const [overflowAlert, setOverflowAlert] = createSignal(false)
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
+  const [sweeping, setSweeping] = createSignal(false)
+  const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
 
   // Track triage sessions: source_id -> sessionID
   const triageSessionMap = new Map<string, string>()
@@ -100,8 +130,8 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     }
   }
 
-  function handleDismiss(item: SweepResult) {
-    const ruleSource = `sweep:${item.source}:${item.priority}`
+  function handleDismiss(item: ActivityItem) {
+    const ruleSource = `activity:${item.source}`
     try {
       Database.use((db) => {
         db.insert(DismissedEventTable).values({
@@ -116,8 +146,8 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     } catch {}
     refresh()
   }
-  function handleSnooze(item: SweepResult, duration: SnoozeDuration) {
-    const ruleSource = `sweep:${item.source}:${item.priority}`
+  function handleSnooze(item: ActivityItem, duration: SnoozeDuration) {
+    const ruleSource = `activity:${item.source}`
     const snoozeUntil = Date.now() + SNOOZE_DURATIONS[duration]
     try {
       Database.use((db) => {
@@ -135,7 +165,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   }
   void handleSnooze
 
-  async function launchTriageSession(item: SweepResult) {
+  async function launchTriageSession(item: ActivityItem) {
     // Resume existing triage session if one exists for this item
     const existingSessionID = triageSessionMap.get(item.source_id)
     if (existingSessionID) {
@@ -143,8 +173,23 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
       return
     }
 
+    // Show sweeping indicator
+    setSweeping(true)
+    setSweepingSourceId(item.source_id)
+
+    // Sweep the single issue
+    let sweepResult: Awaited<ReturnType<typeof sweepSingle>> = null
+    try {
+      sweepResult = await sweepSingle(item.source_id)
+    } catch (err) {
+      // Continue anyway, will launch triage without sweep result
+    }
+
+    setSweeping(false)
+    setSweepingSourceId(null)
+
     // Create new session
-    const phaseSuffix = item.phase ? ` [${item.phase}]` : ""
+    const phaseSuffix = sweepResult?.phase ? ` [${sweepResult.phase}]` : ""
     const result = await props.api.client.session.create({
       title: `Triage${phaseSuffix}: ${item.title.slice(0, 50)}`,
     })
@@ -157,22 +202,34 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     const processDoc = loadProcessDoc() ?? "No process document configured."
     const role = getRole() ?? "No role configured."
 
-    // Send initial context
-    await props.api.client.session.prompt({
-      sessionID,
-      parts: [{
-        type: "text" as const,
-        text: `Process context from your team's process document:
+    // Build context message
+    let contextText = `Process context from your team's process document:
 ${processDoc}
 
 Your role: ${role}
 
 Issue: ${item.title}
 URL: ${item.url ?? "none"}
-Current state: ${item.summary}
-Recommended action: ${item.action}
+`
 
-Help me take this action. Fetch the full issue details first.`,
+    if (sweepResult) {
+      contextText += `
+Sweep analysis:
+Summary: ${sweepResult.summary}
+Recommended action: ${sweepResult.action}
+Priority: ${sweepResult.priority}
+${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
+`
+    }
+
+    contextText += "\nHelp me take this action. Fetch the full issue details first."
+
+    // Send initial context
+    await props.api.client.session.prompt({
+      sessionID,
+      parts: [{
+        type: "text" as const,
+        text: contextText,
       }],
     })
 
@@ -211,7 +268,7 @@ Help me take this action. Fetch the full issue details first.`,
       const idx = selectedIndex()
       const offset = scrollOffset()
       const vh = visibleHeight()
-      // Each item takes 3 rows (title + summary + action)
+      // Each item takes 2 rows (title + event type/summary)
       if (idx >= offset + vh) setScrollOffset(idx - vh + 1)
       return
     }
@@ -239,11 +296,12 @@ Help me take this action. Fetch the full issue details first.`,
   onCleanup(() => { if (refreshTimer) clearInterval(refreshTimer) })
 
   const visibleHeight = () => {
-    // Each item takes 3 rows, header takes 3 rows, footer takes 1 row, overflow alert takes 1 row (optional)
+    // Each item takes 2 rows, header takes 3 rows (or 4 with overflow), footer takes 1 row, sweeping message takes 1 row (optional)
     const headerRows = overflowAlert() ? 4 : 3
     const footerRows = 1
-    const availableRows = Math.max(dimensions().height - headerRows - footerRows, 3)
-    return Math.floor(availableRows / 3)
+    const sweepingRows = sweeping() ? 1 : 0
+    const availableRows = Math.max(dimensions().height - headerRows - footerRows - sweepingRows, 2)
+    return Math.floor(availableRows / 2)
   }
   const visibleItems = () => {
     const all = queue(); const offset = scrollOffset()
@@ -266,13 +324,16 @@ Help me take this action. Fetch the full issue details first.`,
         </box>
       </Show>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
-        <box width={2} flexShrink={0} />
-        <box width={6} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Prty</text></box>
-        <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Phase</text></box>
+        <box width={2} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
         <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title</text></box>
         <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
+      <Show when={sweeping()}>
+        <box height={1} flexShrink={0} paddingLeft={1}>
+          <text fg={theme.info}>{"Sweeping issue..."}</text>
+        </box>
+      </Show>
       <Show when={queue().length > 0} fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
           <text fg={theme.textMuted}>Nothing needs you right now</text>
@@ -283,28 +344,23 @@ Help me take this action. Fetch the full issue details first.`,
         <box flexGrow={1} flexDirection="column" overflow="hidden">
           <For each={visibleItems().pinned}>
             {(item, index) => {
-              const pc = () => priorityColor(item.priority, theme)
-              const maxTitleWidth = () => Math.max(dimensions().width - 40, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 26, 10)
               const isSelected = () => {
                 const offset = scrollOffset()
                 return index() + offset === selectedIndex()
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
+              const isSweeping = () => sweeping() && sweepingSourceId() === item.source_id
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1}>
-                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{isSelected() ? "> " : "  "}</text></box>
-                    <box width={6} flexShrink={0}><text fg={pc()} attributes={TextAttributes.BOLD}>{item.priority.padEnd(6)}</text></box>
-                    <box width={8} flexShrink={0}><text fg={theme.textMuted}>{(item.phase ?? "—").padEnd(8).slice(0, 8)}</text></box>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{isSelected() ? sourceChar(item.source) : " "} </text></box>
                     <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={theme.text}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box flexGrow={1}><text fg={theme.text}>{hasTriage() ? "● " : ""}{isSweeping() ? "⟳ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={10}>
-                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.summary}</text>
-                  </box>
-                  <box height={1} flexDirection="row" paddingLeft={10}>
-                    <text fg={pc()}>{item.action}</text>
+                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
                   </box>
                 </box>
               )

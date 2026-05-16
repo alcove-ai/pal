@@ -281,6 +281,57 @@ export async function sweepChanged(changedSourceIds: string[]): Promise<number> 
   }
 }
 
+export async function sweepSingle(sourceId: string): Promise<{
+  summary: string
+  action: string
+  priority: string
+  phase?: string
+} | null> {
+  const processDoc = loadProcessDoc()
+  const role = getRole()
+  if (!processDoc || !role) {
+    log.info("no process doc or role configured, cannot sweep")
+    return null
+  }
+
+  // Find the issue in recent activity events
+  const issues = loadIssueSnapshots()
+  const issue = issues.find((i) => i.source_id === sourceId)
+  if (!issue) {
+    log.info("issue not found in activity snapshots", { sourceId })
+    return null
+  }
+
+  // Search mempalace for related context
+  const memoryContext = await searchRelated(issue.title)
+  const issueContext = buildIssueContext(issue, memoryContext)
+
+  const system = [
+    "You are a process facilitator for a software team.",
+    "You understand the team's development process and the user's role in it.",
+    "Assess each work item and tell the user specifically what THEY need to do next given their role.",
+    "Respond with ONLY a JSON object: {\"summary\": \"...\", \"action\": \"...\", \"priority\": \"urgent|soon|normal|low\", \"phase\": \"...\"}",
+    "Be concise — 1-2 sentences for summary, 1 sentence for action.",
+    "",
+    "=== TEAM PROCESS ===",
+    processDoc,
+    "",
+    "=== USER'S ROLE ===",
+    role,
+  ].join("\n")
+
+  try {
+    const result = await callVertexClaude(system, issueContext)
+    if (result) {
+      log.info("swept single issue", { source_id: sourceId, priority: result.priority })
+    }
+    return result
+  } catch (err) {
+    log.error("failed to sweep single issue", { sourceId, error: err })
+    return null
+  }
+}
+
 export function getSweepResults(): Array<{
   source_id: string
   source: string
