@@ -1,6 +1,8 @@
 import * as Log from "@opencode-ai/core/util/log"
-import { execSync } from "child_process"
+import { execFile, execSync } from "child_process"
+import { promisify } from "util"
 
+const execFileAsync = promisify(execFile)
 const log = Log.create({ service: "sweep.mempalace" })
 
 let mempalaceBin: string | null | undefined
@@ -29,22 +31,17 @@ function deriveWing(): string {
   return process.cwd().replace(/\//g, "_")
 }
 
-export function searchRelated(query: string): string {
+export async function searchRelated(query: string): Promise<string> {
   const bin = ensureInstalled()
   if (!bin) return ""
 
   const wing = deriveWing()
   try {
-    const result = execSync(
-      `${bin} search ${JSON.stringify(query.slice(0, 200))} --wing ${JSON.stringify(wing)} --results 3`,
-      { encoding: "utf-8", timeout: 10_000 },
-    )
-    return result.trim()
+    const { stdout } = await execFileAsync(bin, [
+      "search", query.slice(0, 200), "--wing", wing, "--results", "3",
+    ], { encoding: "utf-8", timeout: 10_000 })
+    return stdout.trim()
   } catch {
     return ""
   }
-}
-
-export function isAvailable(): boolean {
-  return ensureInstalled() !== null
 }

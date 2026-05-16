@@ -1,6 +1,5 @@
 import * as Log from "@opencode-ai/core/util/log"
-import { generateObject } from "ai"
-import z from "zod"
+import { execSync } from "child_process"
 import { Database } from "@/storage/db"
 import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
 import { SweepResultTable } from "./sweep.sql"
@@ -11,30 +10,64 @@ import { searchRelated } from "./mempalace"
 
 const log = Log.create({ service: "sweep" })
 
-const SWEEP_SCHEMA = z.object({
-  summary: z.string().describe("1-2 sentence summary of the issue's current state"),
-  action: z.string().describe("What the user should do next given their role"),
-  priority: z.enum(["urgent", "soon", "normal", "low"]).describe("How urgently this needs attention"),
-  phase: z.string().optional().describe("Where in the team process this work item is"),
-})
-
-const CONCURRENCY = 5
+const CONCURRENCY = 3
 let sweeping = false
-let modelInstance: any = null
 
-async function getModel() {
-  if (modelInstance) return modelInstance
+function getAuthToken(): string | null {
   try {
-    const { createVertexAnthropic } = await import("@ai-sdk/google-vertex/anthropic")
-    const vertex = createVertexAnthropic({
-      project: process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCP_PROJECT,
-      location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
-    })
-    modelInstance = vertex("claude-sonnet-4-6@default")
-    return modelInstance
-  } catch (err) {
-    log.error("failed to create model for sweep", { error: err })
+    return execSync("gcloud auth application-default print-access-token", {
+      encoding: "utf-8", timeout: 10_000,
+    }).trim()
+  } catch {
+    log.error("failed to get GCP auth token for sweep")
     return null
+  }
+}
+
+async function callVertexClaude(system: string, prompt: string): Promise<{ summary: string; action: string; priority: string; phase?: string } | null> {
+  const project = process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCP_PROJECT
+  const location = process.env.GOOGLE_CLOUD_LOCATION ?? "global"
+  if (!project) { log.error("GOOGLE_CLOUD_PROJECT not set"); return null }
+
+  const token = getAuthToken()
+  if (!token) return null
+
+  const host = location === "global" ? "" : `${location}-`
+  const url = `https://${host}aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/anthropic/models/claude-sonnet-4-6@default:rawPredict`
+
+  const body = {
+    anthropic_version: "vertex-2023-10-16",
+    max_tokens: 400,
+    temperature: 0,
+    system,
+    messages: [{ role: "user", content: prompt }],
+  }
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60_000),
+  })
+
+  if (!resp.ok) {
+    log.error("vertex API error", { status: resp.status, body: (await resp.text()).slice(0, 200) })
+    return null
+  }
+
+  const result = await resp.json() as any
+  const text = result.content?.[0]?.text ?? ""
+
+  try {
+    const parsed = JSON.parse(text)
+    return {
+      summary: parsed.summary ?? "No summary",
+      action: parsed.action ?? "Review this item",
+      priority: parsed.priority ?? "normal",
+      phase: parsed.phase,
+    }
+  } catch {
+    return { summary: text.slice(0, 200), action: "Review this item", priority: "normal" }
   }
 }
 
@@ -125,32 +158,26 @@ function buildIssueContext(issue: IssueSnapshot, memoryContext?: string): string
 }
 
 async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string): Promise<void> {
-  const model = await getModel()
-  if (!model) return
-
-  const memoryContext = searchRelated(issue.title)
+  const memoryContext = await searchRelated(issue.title)
   const issueContext = buildIssueContext(issue, memoryContext)
 
+  const system = [
+    "You are a process facilitator for a software team.",
+    "You understand the team's development process and the user's role in it.",
+    "Assess each work item and tell the user specifically what THEY need to do next given their role.",
+    "Respond with ONLY a JSON object: {\"summary\": \"...\", \"action\": \"...\", \"priority\": \"urgent|soon|normal|low\", \"phase\": \"...\"}",
+    "Be concise — 1-2 sentences for summary, 1 sentence for action.",
+    "",
+    "=== TEAM PROCESS ===",
+    processDoc,
+    "",
+    "=== USER'S ROLE ===",
+    role,
+  ].join("\n")
+
   try {
-    const result = await generateObject({
-      model,
-      schema: SWEEP_SCHEMA,
-      system: [
-        "You are a process facilitator for a software team.",
-        "You understand the team's development process and the user's role in it.",
-        "Assess each work item and tell the user specifically what THEY need to do next given their role.",
-        "Be concise — 1-2 sentences for summary, 1 sentence for action.",
-        "",
-        "=== TEAM PROCESS ===",
-        processDoc,
-        "",
-        "=== USER'S ROLE ===",
-        role,
-      ].join("\n"),
-      prompt: issueContext,
-      maxOutputTokens: 300,
-      temperature: 0,
-    })
+    const result = await callVertexClaude(system, issueContext)
+    if (!result) return
 
     Database.use((db) => {
       db.insert(SweepResultTable)
@@ -158,10 +185,10 @@ async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string
           source_id: issue.source_id,
           source: issue.source,
           title: issue.title,
-          summary: result.object.summary,
-          action: result.object.action,
-          priority: result.object.priority,
-          phase: result.object.phase ?? null,
+          summary: result.summary,
+          action: result.action,
+          priority: result.priority,
+          phase: result.phase ?? null,
           url: issue.url,
           actor: issue.actor,
           last_event_ts: issue.last_event_ts,
@@ -173,10 +200,10 @@ async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string
           target: SweepResultTable.source_id,
           set: {
             title: issue.title,
-            summary: result.object.summary,
-            action: result.object.action,
-            priority: result.object.priority,
-            phase: result.object.phase ?? null,
+            summary: result.summary,
+            action: result.action,
+            priority: result.priority,
+            phase: result.phase ?? null,
             url: issue.url,
             actor: issue.actor,
             last_event_ts: issue.last_event_ts,
@@ -188,7 +215,7 @@ async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string
         .run()
     })
 
-    log.info("swept issue", { source_id: issue.source_id, priority: result.object.priority })
+    log.info("swept issue", { source_id: issue.source_id, priority: result.priority })
   } catch (err) {
     log.error("failed to sweep issue", { source_id: issue.source_id, error: err })
   }
