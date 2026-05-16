@@ -163,14 +163,13 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<bool
 
     const binaryUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}`
     const checksumUrl = `${CONTENT_BASE}/v${remoteVersion}/${assetName}.sha256`
-    // process.execPath returns virtual path in Bun compiled binaries; use argv[0] or which
-    let execPath = process.argv[0] ?? process.execPath
-    if (execPath.includes("$bunfs") || execPath.includes("bunfs")) {
-      try {
-        execPath = fs.realpathSync(require("child_process").execSync("which pal", { encoding: "utf-8" }).trim())
-      } catch {
-        execPath = path.join(os.homedir(), ".local", "bin", "pal")
-      }
+    // Resolve the real binary path — process.execPath is virtual in Bun compiled binaries
+    let execPath: string
+    try {
+      const { execSync: execSyncChild } = require("child_process")
+      execPath = execSyncChild("which pal", { encoding: "utf-8" }).trim()
+    } catch {
+      execPath = path.join(os.homedir(), ".local", "bin", "pal")
     }
     const execDir = path.dirname(execPath)
 
@@ -184,6 +183,7 @@ export async function checkForUpdate(opts?: { verbose?: boolean }): Promise<bool
     }
 
     if (!writable) {
+      log.info("binary not writable", { execPath, execDir })
       say(`Cannot write to ${execPath} — run with sudo or update manually:\n`)
       say(`  curl -fSL "${binaryUrl}" -o "${execPath}" && chmod +x "${execPath}"\n`)
       return false
