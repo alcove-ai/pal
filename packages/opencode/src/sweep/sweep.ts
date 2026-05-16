@@ -309,6 +309,11 @@ export async function sweepSingle(sourceId: string): Promise<{
 
   // Search mempalace for related context
   const memoryContext = await searchRelated(issue.title)
+  if (memoryContext) {
+    log.info("mempalace context found for issue", { sourceId, contextLength: memoryContext.length })
+  } else {
+    log.info("no mempalace context found for issue", { sourceId })
+  }
   const issueContext = buildIssueContext(issue, memoryContext)
 
   const system = [

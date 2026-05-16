@@ -11,6 +11,7 @@ function ensureInstalled(): string | null {
   if (mempalaceBin !== undefined) return mempalaceBin
   try {
     mempalaceBin = execSync("which mempalace", { encoding: "utf-8", timeout: 5000 }).trim()
+    log.info("found existing mempalace installation", { path: mempalaceBin })
     return mempalaceBin
   } catch {
     try {
@@ -36,12 +37,17 @@ export async function searchRelated(query: string): Promise<string> {
   if (!bin) return ""
 
   const wing = deriveWing()
+  log.info("searching mempalace", { query: query.slice(0, 100), wing })
+
   try {
     const { stdout } = await execFileAsync(bin, [
       "search", query.slice(0, 200), "--wing", wing, "--results", "3",
     ], { encoding: "utf-8", timeout: 10_000 })
-    return stdout.trim()
-  } catch {
+    const result = stdout.trim()
+    log.info("mempalace search returned results", { resultLength: result.length })
+    return result
+  } catch (err) {
+    log.error("mempalace search failed", { error: err })
     return ""
   }
 }
