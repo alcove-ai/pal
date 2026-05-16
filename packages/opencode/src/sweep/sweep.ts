@@ -7,12 +7,7 @@ import { SweepResultTable } from "./sweep.sql"
 import { desc, eq, sql } from "drizzle-orm"
 import { load as loadProcessDoc } from "@/process/process-doc"
 import { get as getRole } from "@/config/role"
-import { searchRelated, storeResults, type SweepResult as MemPalaceSweepResult } from "./mempalace"
-
-interface McpTool {
-  execute?: (input: any, options?: any) => any
-}
-type McpToolsAccessor = () => Promise<Record<string, McpTool> | undefined>
+import { searchRelated } from "./mempalace"
 
 const log = Log.create({ service: "sweep" })
 
@@ -129,15 +124,11 @@ function buildIssueContext(issue: IssueSnapshot, memoryContext?: string): string
   return lines.join("\n")
 }
 
-async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string, getMcpTools?: McpToolsAccessor): Promise<void> {
+async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string): Promise<void> {
   const model = await getModel()
   if (!model) return
 
-  let memoryContext = ""
-  if (getMcpTools) {
-    memoryContext = await searchRelated(issue.title, getMcpTools)
-  }
-
+  const memoryContext = searchRelated(issue.title)
   const issueContext = buildIssueContext(issue, memoryContext)
 
   try {
@@ -203,18 +194,18 @@ async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string
   }
 }
 
-async function sweepBatch(issues: IssueSnapshot[], processDoc: string, role: string, getMcpTools?: McpToolsAccessor): Promise<number> {
+async function sweepBatch(issues: IssueSnapshot[], processDoc: string, role: string): Promise<number> {
   let swept = 0
   for (let i = 0; i < issues.length; i += CONCURRENCY) {
     const batch = issues.slice(i, i + CONCURRENCY)
-    await Promise.all(batch.map((issue) => sweepIssue(issue, processDoc, role, getMcpTools)))
+    await Promise.all(batch.map((issue) => sweepIssue(issue, processDoc, role)))
     swept += batch.length
     log.info("sweep progress", { swept, total: issues.length })
   }
   return swept
 }
 
-export async function runFullSweep(opts?: { getMcpTools?: McpToolsAccessor }): Promise<number> {
+export async function runFullSweep(): Promise<number> {
   if (sweeping) {
     log.info("sweep already in progress, skipping")
     return 0
@@ -236,31 +227,15 @@ export async function runFullSweep(opts?: { getMcpTools?: McpToolsAccessor }): P
   try {
     const issues = loadIssueSnapshots()
     log.info("starting full sweep", { issues: issues.length })
-    const swept = await sweepBatch(issues, processDoc, role, opts?.getMcpTools)
+    const swept = await sweepBatch(issues, processDoc, role)
     log.info("full sweep complete", { swept })
-
-    if (opts?.getMcpTools && swept > 0) {
-      const results = getSweepResults()
-      await storeResults(
-        results.map((r): MemPalaceSweepResult => ({
-          source_id: r.source_id,
-          title: r.title,
-          summary: r.summary,
-          action: r.action,
-          priority: r.priority,
-          phase: r.phase,
-        })),
-        opts.getMcpTools,
-      )
-    }
-
     return swept
   } finally {
     sweeping = false
   }
 }
 
-export async function sweepChanged(changedSourceIds: string[], opts?: { getMcpTools?: McpToolsAccessor }): Promise<number> {
+export async function sweepChanged(changedSourceIds: string[]): Promise<number> {
   if (sweeping || changedSourceIds.length === 0) return 0
 
   const processDoc = loadProcessDoc()
@@ -273,7 +248,7 @@ export async function sweepChanged(changedSourceIds: string[], opts?: { getMcpTo
   sweeping = true
   try {
     log.info("sweeping changed issues", { count: issues.length })
-    return await sweepBatch(issues, processDoc, role, opts?.getMcpTools)
+    return await sweepBatch(issues, processDoc, role)
   } finally {
     sweeping = false
   }

@@ -381,11 +381,11 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
         log.error("failed to prune on startup", { error: err })
       }
 
-      // Run first poll, then trigger LLM sweep with MCP tools for MemPalace
+      // Run first poll, then trigger LLM sweep
       void runPollCycle().then(async () => {
         try {
           const { runFullSweep } = await import("@/sweep/sweep")
-          await runFullSweep({ getMcpTools })
+          await runFullSweep()
         } catch (err) {
           log.info("sweep skipped or failed", { error: err })
         }
