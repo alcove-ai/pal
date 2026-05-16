@@ -1,5 +1,4 @@
 import * as Log from "@opencode-ai/core/util/log"
-import { execSync } from "child_process"
 import { Database } from "@/storage/db"
 import { ActivityEventTable } from "@/activity-feed/activity-feed.sql"
 import { SweepResultTable } from "./sweep.sql"
@@ -13,13 +12,19 @@ const log = Log.create({ service: "sweep" })
 const CONCURRENCY = 3
 let sweeping = false
 
-function getAuthToken(): string | null {
+let authClient: any = null
+
+async function getAuthToken(): Promise<string | null> {
   try {
-    return execSync("gcloud auth application-default print-access-token", {
-      encoding: "utf-8", timeout: 10_000,
-    }).trim()
-  } catch {
-    log.error("failed to get GCP auth token for sweep")
+    if (!authClient) {
+      const { GoogleAuth } = await import("google-auth-library")
+      const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] })
+      authClient = await auth.getClient()
+    }
+    const token = await authClient.getAccessToken()
+    return token?.token ?? null
+  } catch (err) {
+    log.error("failed to get GCP auth token for sweep", { error: err })
     return null
   }
 }
@@ -29,7 +34,7 @@ async function callVertexClaude(system: string, prompt: string): Promise<{ summa
   const location = process.env.GOOGLE_CLOUD_LOCATION ?? "global"
   if (!project) { log.error("GOOGLE_CLOUD_PROJECT not set"); return null }
 
-  const token = getAuthToken()
+  const token = await getAuthToken()
   if (!token) return null
 
   const host = location === "global" ? "" : `${location}-`
