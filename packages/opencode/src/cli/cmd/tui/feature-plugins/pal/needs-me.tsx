@@ -106,6 +106,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const dimensions = useTerminalDimensions()
   const [queue, setQueue] = createSignal<ActivityItem[]>([])
   const [lastChecked, setLastChecked] = createSignal<number | null>(null)
+  const [hasEverLoaded, setHasEverLoaded] = createSignal(false)
   const [overflowAlert, setOverflowAlert] = createSignal(false)
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
   const [scrollOffset, setScrollOffset] = createSignal(0)
@@ -118,6 +119,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
 
   function refresh() {
     const items = computeFilteredQueue(); setQueue(items); setLastChecked(Date.now())
+    if (items.length > 0) setHasEverLoaded(true)
     const now = Date.now()
     if (items.length > OVERFLOW_THRESHOLD) {
       const since = overflowSince()
@@ -337,16 +339,16 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
       </Show>
       <Show when={queue().length > 0} fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-          <Show when={lastChecked() === null} fallback={
+          <Show when={hasEverLoaded()} fallback={
             <>
-              <text fg={theme.textMuted}>Nothing needs you right now</text>
+              <text fg={theme.primary} attributes={TextAttributes.BOLD}>{"⠋ Loading activity feed..."}</text>
               <box height={1} />
-              <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
+              <text fg={theme.textMuted}>Waiting for first poll to complete</text>
             </>
           }>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"⠋ Loading activity feed..."}</text>
+            <text fg={theme.textMuted}>Nothing needs you right now</text>
             <box height={1} />
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>Waiting for first poll to complete</text>
+            <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
           </Show>
         </box>
       }>
