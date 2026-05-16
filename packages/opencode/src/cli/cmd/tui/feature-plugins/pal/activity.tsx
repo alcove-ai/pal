@@ -12,6 +12,7 @@ import { registerTab } from "@tui/pal/tab-registry"
 import { ActivityFeed } from "@/activity-feed"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
+import { PollStateTable } from "@/activity-feed/activity-feed.sql"
 
 const id = "internal:pal-activity"
 const PAGE_SIZE = 50
@@ -134,6 +135,7 @@ function ActivityView() {
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [actorFilter, setActorFilter] = createSignal<ActorTypeFilter>("all")
   const [modeFilter, setModeFilter] = createSignal<ModeFilter>("all")
+  const [pollCompleted, setPollCompleted] = createSignal(false)
 
   function cycleActorFilter() {
     const current = actorFilter()
@@ -153,6 +155,19 @@ function ActivityView() {
     const filter = actorFilter()
     const mode = modeFilter()
     setEvents(loadEvents(filter === "all" ? undefined : filter, mode))
+
+    // Check if any poll has completed by looking at PollStateTable
+    try {
+      const hasCompletedPoll = Database.use((db) => {
+        const rows = db.select().from(PollStateTable).limit(1).all()
+        return rows.length > 0 && rows[0].last_success_ts !== null
+      })
+      if (hasCompletedPoll) {
+        setPollCompleted(true)
+      }
+    } catch {
+      // Ignore database errors
+    }
   }
 
   onMount(() => refresh())
@@ -203,8 +218,14 @@ function ActivityView() {
         <box width={16} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
       <Show when={events().length > 0} fallback={
-        <box flexGrow={1} alignItems="center" justifyContent="center">
-          <text fg={theme.textMuted}>No activity events yet. Events will appear after the first poll cycle.</text>
+        <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
+          <Show when={!pollCompleted()} fallback={
+            <text fg={theme.textMuted}>No activity events yet. Events will appear after the first poll cycle.</text>
+          }>
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"⠋ Loading activity feed..."}</text>
+            <box height={1} />
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>Polling activity sources</text>
+          </Show>
         </box>
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">

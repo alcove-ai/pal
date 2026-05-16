@@ -330,15 +330,24 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
         <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
       <Show when={sweeping()}>
-        <box height={1} flexShrink={0} paddingLeft={1}>
-          <text fg={theme.info}>{"Sweeping issue..."}</text>
+        <box height={1} flexShrink={0} paddingLeft={1} backgroundColor={theme.backgroundPanel}>
+          <text fg={theme.primary} attributes={TextAttributes.BOLD}>{"⟳ Analyzing: "}</text>
+          <text fg={theme.text}>{queue().find(item => item.source_id === sweepingSourceId())?.title ?? "..."}</text>
         </box>
       </Show>
       <Show when={queue().length > 0} fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-          <text fg={theme.textMuted}>Nothing needs you right now</text>
-          <box height={1} />
-          <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
+          <Show when={lastChecked() === null} fallback={
+            <>
+              <text fg={theme.textMuted}>Nothing needs you right now</text>
+              <box height={1} />
+              <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
+            </>
+          }>
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"⠋ Loading activity feed..."}</text>
+            <box height={1} />
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>Waiting for first poll to complete</text>
+          </Show>
         </box>
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">
