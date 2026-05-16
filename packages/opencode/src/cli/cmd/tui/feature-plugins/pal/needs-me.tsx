@@ -16,7 +16,7 @@ import { get as getRole } from "@/config/role"
 import { load as loadProcessDoc } from "@/process/process-doc"
 
 const id = "internal:pal-needs-me"
-const REFRESH_INTERVAL_MS = 30_000
+const REFRESH_INTERVAL_MS = 5_000
 const OVERFLOW_THRESHOLD = 20
 const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
