@@ -131,6 +131,17 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [sweeping, setSweeping] = createSignal(false)
   const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
 
+  // Animated spinner
+  const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  const [spinnerFrame, setSpinnerFrame] = createSignal(0)
+  let spinnerTimer: ReturnType<typeof setInterval> | undefined
+  onMount(() => {
+    spinnerTimer = setInterval(() => {
+      setSpinnerFrame((f) => (f + 1) % spinnerFrames.length)
+    }, 100)
+  })
+  onCleanup(() => { if (spinnerTimer) clearInterval(spinnerTimer) })
+
   // Track triage sessions: source_id -> sessionID
   const triageSessionMap = new Map<string, string>()
 
@@ -358,7 +369,7 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
           <Show when={hasEverLoaded()} fallback={
             <>
-              <text fg={theme.primary} attributes={TextAttributes.BOLD}>{"⠋ Loading activity feed..."}</text>
+              <text fg={theme.primary} attributes={TextAttributes.BOLD}>{spinnerFrames[spinnerFrame()]}{" Loading activity feed..."}</text>
               <box height={1} />
               <text fg={theme.textMuted}>Waiting for first poll to complete</text>
             </>

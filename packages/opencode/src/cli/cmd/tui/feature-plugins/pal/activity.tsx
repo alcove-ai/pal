@@ -137,6 +137,17 @@ function ActivityView() {
   const [modeFilter, setModeFilter] = createSignal<ModeFilter>("all")
   const [pollCompleted, setPollCompleted] = createSignal(false)
 
+  // Animated spinner
+  const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  const [spinnerFrame, setSpinnerFrame] = createSignal(0)
+  let spinnerTimer: ReturnType<typeof setInterval> | undefined
+  onMount(() => {
+    spinnerTimer = setInterval(() => {
+      setSpinnerFrame((f) => (f + 1) % spinnerFrames.length)
+    }, 100)
+  })
+  onCleanup(() => { if (spinnerTimer) clearInterval(spinnerTimer) })
+
   function cycleActorFilter() {
     const current = actorFilter()
     const idx = ACTOR_TYPE_FILTERS.indexOf(current)
@@ -222,7 +233,7 @@ function ActivityView() {
           <Show when={!pollCompleted()} fallback={
             <text fg={theme.textMuted}>No activity events yet. Events will appear after the first poll cycle.</text>
           }>
-            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"⠋ Loading activity feed..."}</text>
+            <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{spinnerFrames[spinnerFrame()]}{" Loading activity feed..."}</text>
             <box height={1} />
             <text fg={theme.textMuted} attributes={TextAttributes.DIM}>Polling activity sources</text>
           </Show>
