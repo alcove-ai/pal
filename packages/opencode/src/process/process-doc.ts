@@ -61,3 +61,21 @@ export function reload(): string | null {
   cached = undefined
   return load()
 }
+
+export function set(content: string): void {
+  const p = path.join(process.cwd(), ".opencode", "process.md")
+  const dir = path.dirname(p)
+  try {
+    if (!fsNode.existsSync(dir)) fsNode.mkdirSync(dir, { recursive: true })
+    fsNode.writeFileSync(p, content + "\n", "utf-8")
+    cached = content.trim()
+    log.info("saved process doc", { path: p })
+    watch(p)
+  } catch (err) {
+    log.error("failed to save process doc", { error: err })
+  }
+}
+
+export function resolvedPath(): string | null {
+  return resolve()
+}
