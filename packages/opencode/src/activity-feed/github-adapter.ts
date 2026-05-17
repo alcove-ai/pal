@@ -91,6 +91,7 @@ interface GitHubIssue {
   labels: Array<{ name: string }>
   pull_request?: { url: string } | null
   assignee?: { login: string } | null
+  milestone?: { title: string; number: number } | null
 }
 
 interface GitHubSearchResult {
@@ -533,6 +534,7 @@ async function pollTier1Issues(tier1: string[], bots: Set<string>, agentConfig?:
         issue_number: issue.number,
         labels,
         assignee: issue.assignee?.login ?? null,
+        milestone: issue.milestone?.title ?? null,
       }
 
       if (issue.state === "closed") {

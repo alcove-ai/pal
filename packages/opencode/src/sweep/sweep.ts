@@ -157,6 +157,11 @@ function buildIssueContext(issue: IssueSnapshot, memoryContext?: string): string
         const desc = String(meta.description).slice(0, 500)
         lines.push(`    Description: ${desc}${String(meta.description).length > 500 ? "..." : ""}`)
       }
+      if (meta.parent_key) lines.push(`    Parent: ${meta.parent_key}`)
+      if (meta.issue_type) lines.push(`    Type: ${meta.issue_type}`)
+      if (meta.milestone) lines.push(`    Milestone: ${meta.milestone}`)
+      if (meta.components && Array.isArray(meta.components) && meta.components.length > 0) lines.push(`    Components: ${meta.components.join(", ")}`)
+      if (meta.labels && Array.isArray(meta.labels) && meta.labels.length > 0) lines.push(`    Labels: ${meta.labels.join(", ")}`)
     }
   }
   return lines.join("\n")

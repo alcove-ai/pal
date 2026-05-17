@@ -31,7 +31,14 @@ type ActivityItem = {
   last_event_ts: number
   event_type: string
   summary: string | null
+  parent_key: string | null
+  issue_type: string | null
+  milestone: string | null
 }
+
+type DisplayRow =
+  | { kind: "header"; groupKey: string; label: string; count: number; collapsed: boolean }
+  | { kind: "item"; item: ActivityItem; indented: boolean }
 
 function formatTimestamp(ts: number): string {
   const now = Date.now(); const diff = now - ts
@@ -53,6 +60,41 @@ function getDismissedKeys(): Set<string> {
 }
 function getSnoozedKeys(): Map<string, number> {
   try { const now = Date.now(); return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key, snooze_until: DismissedEventTable.snooze_until }).from(DismissedEventTable).where(and(eq(DismissedEventTable.action, "snooze"), gt(DismissedEventTable.snooze_until, now))).all(); const map = new Map<string, number>(); for (const r of rows) { if (r.snooze_until) map.set(r.work_item_key, r.snooze_until) }; return map }) } catch { return new Map() }
+}
+
+function buildDisplayRows(items: ActivityItem[], collapsedGroups: Set<string>): DisplayRow[] {
+  const groups = new Map<string, { label: string; items: ActivityItem[] }>()
+  const ungrouped: ActivityItem[] = []
+
+  for (const item of items) {
+    const groupKey = item.parent_key ?? item.milestone
+    if (groupKey) {
+      if (!groups.has(groupKey)) {
+        const label = item.parent_key ? `${item.parent_key}` : `Milestone: ${item.milestone}`
+        groups.set(groupKey, { label, items: [] })
+      }
+      groups.get(groupKey)!.items.push(item)
+    } else {
+      ungrouped.push(item)
+    }
+  }
+
+  const rows: DisplayRow[] = []
+  for (const [groupKey, group] of groups) {
+    const parentItem = items.find((i) => i.source_id === groupKey || i.source_id.endsWith("#" + groupKey))
+    const label = parentItem ? `${groupKey}: ${parentItem.title.replace(`${groupKey}: `, "")}` : group.label
+    const collapsed = collapsedGroups.has(groupKey)
+    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed })
+    if (!collapsed) {
+      for (const item of group.items) {
+        rows.push({ kind: "item", item, indented: true })
+      }
+    }
+  }
+  for (const item of ungrouped) {
+    rows.push({ kind: "item", item, indented: false })
+  }
+  return rows
 }
 
 function computeFilteredQueue(): ActivityItem[] {
@@ -86,6 +128,7 @@ function computeFilteredQueue(): ActivityItem[] {
           }
         }
         if (!bySourceId.has(row.source_id)) {
+          const meta = row.metadata as Record<string, unknown> | null
           bySourceId.set(row.source_id, {
             source_id: row.source_id,
             source: row.source,
@@ -95,6 +138,9 @@ function computeFilteredQueue(): ActivityItem[] {
             last_event_ts: row.timestamp,
             event_type: row.event_type,
             summary: row.summary,
+            parent_key: (meta?.parent_key as string) ?? null,
+            issue_type: (meta?.issue_type as string) ?? null,
+            milestone: (meta?.milestone as string) ?? null,
           })
         }
       }
@@ -130,6 +176,8 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [sweeping, setSweeping] = createSignal(false)
   const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
+  const displayRows = () => buildDisplayRows(queue(), collapsedGroups())
 
   // Animated spinner
   const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -294,12 +342,16 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     if (name === "down" || name === "j") {
       evt.preventDefault()
       setSelectedIndex((idx) => Math.min(items.length - 1, idx + 1))
-      // Adjust scroll to keep selection visible
+      // Adjust scroll to keep selection visible by checking if item is in visible display rows
       const idx = selectedIndex()
-      const offset = scrollOffset()
-      const vh = visibleHeight()
-      // Each item takes 2 rows (title + event type/summary)
-      if (idx >= offset + vh) setScrollOffset(idx - vh + 1)
+      const visRows = visibleDisplayRows()
+      const visibleItemIndices: number[] = []
+      for (const r of visRows) {
+        if (r.kind === "item") visibleItemIndices.push(queue().indexOf(r.item))
+      }
+      if (!visibleItemIndices.includes(idx)) {
+        setScrollOffset((prev) => prev + 1)
+      }
       return
     }
 
@@ -318,6 +370,24 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
       if (item) handleDismiss(item)
       return
     }
+
+    // e: expand/collapse group
+    if (name === "e") {
+      evt.preventDefault()
+      const item = items[selectedIndex()]
+      if (item) {
+        const groupKey = item.parent_key ?? item.milestone
+        if (groupKey) {
+          setCollapsedGroups((prev) => {
+            const next = new Set(prev)
+            if (next.has(groupKey)) next.delete(groupKey)
+            else next.add(groupKey)
+            return next
+          })
+        }
+      }
+      return
+    }
   })
 
   onMount(() => refresh())
@@ -326,17 +396,45 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
   onCleanup(() => { if (refreshTimer) clearInterval(refreshTimer) })
 
   const visibleHeight = () => {
-    // Each item takes 2 rows, header takes 3 rows (or 4 with overflow), footer takes 1 row, sweeping message takes 1 row (optional)
+    // Header takes 3 rows (or 4 with overflow), footer takes 1 row, sweeping message takes 1 row (optional)
     const headerRows = overflowAlert() ? 4 : 3
     const footerRows = 1
     const sweepingRows = sweeping() ? 1 : 0
     const availableRows = Math.max(dimensions().height - headerRows - footerRows - sweepingRows, 2)
-    return Math.floor(availableRows / 2)
+    return availableRows
   }
-  const visibleItems = () => {
-    const all = queue(); const offset = scrollOffset()
-    if (overflowAlert() && all.length > OVERFLOW_THRESHOLD) { const pinned = all.slice(0, 10); const rest = all.slice(10); return { pinned, collapsed: rest, collapsedCount: rest.length } }
-    return { pinned: all.slice(offset, offset + visibleHeight()), collapsed: [], collapsedCount: 0 }
+  const visibleDisplayRows = (): DisplayRow[] => {
+    const rows = displayRows()
+    const offset = scrollOffset()
+    const maxRows = visibleHeight()
+
+    // Find the display row that contains the item at scrollOffset
+    let itemCount = 0
+    let startIdx = 0
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].kind === "item") {
+        if (itemCount === offset) { startIdx = i; break }
+        itemCount++
+      } else if (itemCount <= offset) {
+        // Include headers that appear before or at the scroll position
+        startIdx = i
+      }
+    }
+    // Walk backwards to include the group header if the first visible item is indented
+    if (startIdx > 0 && rows[startIdx].kind === "item" && rows[startIdx - 1]?.kind === "header") {
+      startIdx--
+    }
+
+    // Collect rows that fit in available height
+    const result: DisplayRow[] = []
+    let usedRows = 0
+    for (let i = startIdx; i < rows.length; i++) {
+      const rowHeight = rows[i].kind === "header" ? 1 : 2
+      if (usedRows + rowHeight > maxRows) break
+      result.push(rows[i])
+      usedRows += rowHeight
+    }
+    return result
   }
 
   return (
@@ -381,40 +479,45 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
         </box>
       }>
         <box flexGrow={1} flexDirection="column" overflow="hidden">
-          <For each={visibleItems().pinned}>
-            {(item, index) => {
-              const maxTitleWidth = () => Math.max(dimensions().width - 26, 10)
+          <For each={visibleDisplayRows()}>
+            {(row) => {
+              if (row.kind === "header") {
+                return (
+                  <box height={1} flexDirection="row" paddingLeft={1}>
+                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+                      {row.collapsed ? "▶ " : "▼ "}{row.label}{" ("}{row.count}{")"}</text>
+                  </box>
+                )
+              }
+              const item = row.item
+              const indent = row.indented ? 2 : 0
+              const maxTitleWidth = () => Math.max(dimensions().width - 26 - indent, 10)
               const isSelected = () => {
-                const offset = scrollOffset()
-                return index() + offset === selectedIndex()
+                return queue().indexOf(item) === selectedIndex()
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
               const isSweeping = () => sweeping() && sweepingSourceId() === item.source_id
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
-                  <box height={1} flexDirection="row" paddingLeft={1}>
+                  <box height={1} flexDirection="row" paddingLeft={1 + indent}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{isSelected() ? sourceChar(item.source) : " "} </text></box>
                     <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
                     <box flexGrow={1}><text fg={theme.text}>{hasTriage() ? "● " : ""}{isSweeping() ? "⟳ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
-                  <box height={1} flexDirection="row" paddingLeft={10}>
+                  <box height={1} flexDirection="row" paddingLeft={10 + indent}>
                     <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
                   </box>
                 </box>
               )
             }}
           </For>
-          <Show when={visibleItems().collapsedCount > 0}>
-            <box height={1} paddingLeft={1}>
-              <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"... and "}{visibleItems().collapsedCount}{" more items (collapsed)"}</text>
-            </box>
-          </Show>
         </box>
         <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k ↑/↓ select  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k select  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss"}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"e expand/collapse"}</text>
         </box>
       </Show>
     </box>
