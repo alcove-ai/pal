@@ -66,7 +66,7 @@ function computeFilteredQueue(): ActivityItem[] {
         .limit(1000)
         .all()
 
-      const DONE_EVENT_TYPES = new Set(["pr_merged", "pr_closed"])
+      const DONE_EVENT_TYPES = new Set(["pr_merged", "pr_closed", "issue_closed"])
       const DONE_JIRA_STATUSES = new Set(["Closed", "Done", "Resolved"])
       const doneSourceIds = new Set<string>()
 

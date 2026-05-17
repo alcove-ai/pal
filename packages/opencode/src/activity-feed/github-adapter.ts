@@ -79,6 +79,20 @@ interface GitHubReview {
   body: string | null
 }
 
+interface GitHubIssue {
+  number: number
+  title: string
+  state: string
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+  html_url: string
+  user: { login: string }
+  labels: Array<{ name: string }>
+  pull_request?: { url: string } | null
+  assignee?: { login: string } | null
+}
+
 interface GitHubSearchResult {
   total_count: number
   items: Array<{
@@ -223,7 +237,11 @@ export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapte
       const prEvents = await pollTier1PRs(tier1, bots, agentConfig)
       events.push(...prEvents)
 
-      // 3. Upstream review requests (every 5min ~ every 3rd poll at 90s base)
+      // 3. Issue polling for tier1 repos
+      const issueEvents = await pollTier1Issues(tier1, bots, agentConfig)
+      events.push(...issueEvents)
+
+      // 4. Upstream review requests (every 5min ~ every 3rd poll at 90s base)
       if (upstreamOrg && pollCount % 3 === 1) {
         const upstreamEvents = await pollUpstreamReviewRequests(upstreamOrg, bots, agentConfig)
         events.push(...upstreamEvents)
@@ -487,6 +505,76 @@ async function pollTier1PRs(tier1: string[], bots: Set<string>, agentConfig?: Ag
             })
           }
         }
+      }
+    }
+  }
+
+  return events
+}
+
+async function pollTier1Issues(tier1: string[], bots: Set<string>, agentConfig?: AgentDetectorConfig): Promise<ActivityEvent[]> {
+  const events: ActivityEvent[] = []
+
+  for (const repo of tier1) {
+    const issues = await ghApi<GitHubIssue[]>(`/repos/${repo}/issues?state=all&sort=updated&direction=desc&per_page=30&filter=all`)
+    if (!issues) continue
+
+    for (const issue of issues) {
+      // Skip PRs — GitHub's issues endpoint includes them
+      if (issue.pull_request) continue
+      if (isBot(issue.user.login) || bots.has(issue.user.login)) continue
+
+      const sourceId = `${repo}#${issue.number}`
+      const labels = issue.labels.map((l) => l.name)
+
+      const baseMetadata: Record<string, unknown> = {
+        repo,
+        tier: 1,
+        issue_number: issue.number,
+        labels,
+        assignee: issue.assignee?.login ?? null,
+      }
+
+      if (issue.state === "closed") {
+        events.push({
+          id: Identifier.create("evt", "ascending"),
+          source: "github",
+          source_id: sourceId,
+          event_type: "issue_closed" as ActivityEventType,
+          title: `${repo}#${issue.number}: ${issue.title}`,
+          summary: "Issue closed",
+          actor: issue.user.login,
+          actor_type: detectActorType(issue.user.login, baseMetadata, agentConfig),
+          timestamp: parseTimestamp(issue.closed_at ?? issue.updated_at),
+          url: issue.html_url,
+          metadata: baseMetadata,
+          is_read: 0,
+          feed: null,
+          mode: (PalConfig.get().activityFeed?.github?.mode ?? "own") as "own" | "watch",
+          relevance: null,
+          relevance_reasoning: null,
+          created_at: Date.now(),
+        })
+      } else {
+        events.push({
+          id: Identifier.create("evt", "ascending"),
+          source: "github",
+          source_id: sourceId,
+          event_type: "issue_opened" as ActivityEventType,
+          title: `${repo}#${issue.number}: ${issue.title}`,
+          summary: `Issue ${issue.state}`,
+          actor: issue.user.login,
+          actor_type: detectActorType(issue.user.login, baseMetadata, agentConfig),
+          timestamp: parseTimestamp(issue.updated_at),
+          url: issue.html_url,
+          metadata: baseMetadata,
+          is_read: 0,
+          feed: null,
+          mode: (PalConfig.get().activityFeed?.github?.mode ?? "own") as "own" | "watch",
+          relevance: null,
+          relevance_reasoning: null,
+          created_at: Date.now(),
+        })
       }
     }
   }

@@ -21,6 +21,7 @@ export type ActivityEventType =
   | "review_submitted"
   | "pr_commented"
   | "issue_opened"
+  | "issue_closed"
   | "issue_commented"
   | "mentioned"
   | "ci_failed"
