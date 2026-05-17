@@ -63,7 +63,9 @@ function SettingsView() {
     const result = await DialogPrompt.show(dialog, "What's your role on this team?", {
       value: role(),
       placeholder: "I'm the [Role]. I [what you do on the team].",
+      description: () => <text fg={theme.textMuted}>Saved to .opencode/role.md (personal, gitignored). Used by the LLM to understand what matters to you.</text>,
     })
+    dialog.clear()
     if (result?.trim()) {
       setRole(result.trim())
       setRoleText(result.trim())
@@ -130,7 +132,15 @@ function OnboardingGuard() {
       if (!getRole()) {
         const roleText = await DialogPrompt.show(dialog, "Welcome to PAL! What's your role on this team?", {
           placeholder: "I'm the [Role]. I [what you do on the team].",
+          description: () => (
+            <box flexDirection="column" gap={0}>
+              <text fg="gray">Describe your role so PAL knows what needs YOUR attention.</text>
+              <text fg="gray">Saved to .opencode/role.md (personal, gitignored).</text>
+              <text fg="gray">You can edit this later in the Settings tab (press 'e').</text>
+            </box>
+          ),
         })
+        dialog.clear()
         if (roleText?.trim()) {
           setRole(roleText.trim())
         }
@@ -140,7 +150,7 @@ function OnboardingGuard() {
         const confirmed = await DialogConfirm.show(
           dialog,
           "Process document missing",
-          "PAL needs a process document (.opencode/process.md or CONTRIBUTING.md) to understand your team's workflow. Create a starter template?",
+          "PAL reads your team's process from .opencode/process.md or CONTRIBUTING.md. This document describes how your team works — roles, phases, and gates. Create a starter template at .opencode/process.md?",
         )
         if (confirmed) {
           setProcessDoc(PROCESS_TEMPLATE)
