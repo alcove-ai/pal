@@ -66,9 +66,25 @@ function computeFilteredQueue(): ActivityItem[] {
         .limit(1000)
         .all()
 
-      // Group by source_id and take the latest event
+      const DONE_EVENT_TYPES = new Set(["pr_merged", "pr_closed"])
+      const DONE_JIRA_STATUSES = new Set(["Closed", "Done", "Resolved"])
+      const doneSourceIds = new Set<string>()
+
+      // Group by source_id and take the latest event, also track done items
       const bySourceId = new Map<string, ActivityItem>()
       for (const row of rows) {
+        // GitHub: check event type
+        if (DONE_EVENT_TYPES.has(row.event_type)) {
+          doneSourceIds.add(row.source_id)
+        }
+        // Jira: check metadata.status
+        if (row.source === "jira") {
+          const meta = row.metadata as Record<string, unknown> | null
+          const status = (meta?.status as string) ?? ""
+          if (DONE_JIRA_STATUSES.has(status)) {
+            doneSourceIds.add(row.source_id)
+          }
+        }
         if (!bySourceId.has(row.source_id)) {
           bySourceId.set(row.source_id, {
             source_id: row.source_id,
@@ -83,12 +99,13 @@ function computeFilteredQueue(): ActivityItem[] {
         }
       }
 
-      // Filter out dismissed and snoozed items
+      // Filter out dismissed, snoozed, and done items
       const dismissed = getDismissedKeys()
       const snoozed = getSnoozedKeys()
       const items = Array.from(bySourceId.values()).filter((item) => {
         if (dismissed.has(item.source_id)) return false
         if (snoozed.has(item.source_id)) return false
+        if (doneSourceIds.has(item.source_id)) return false
         return true
       })
 
