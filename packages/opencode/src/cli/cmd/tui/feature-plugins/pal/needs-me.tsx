@@ -130,6 +130,8 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
   const displayRows = () => buildDisplayRows(queue(), collapsedGroups())
+  // Items in display order (grouped, then ungrouped) — selectedIndex indexes into this
+  const displayItems = () => displayRows().filter((r): r is DisplayRow & { kind: "item" } => r.kind === "item").map((r) => r.item)
 
   // Animated spinner
   const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -154,9 +156,10 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
       if (since === null) { setOverflowSince(now); setOverflowAlert(false) }
       else if (now - since >= OVERFLOW_SUSTAIN_MS) { setOverflowAlert(true) }
     } else { setOverflowSince(null); setOverflowAlert(false) }
-    // Clamp selectedIndex to new queue bounds
-    if (items.length > 0 && selectedIndex() >= items.length) {
-      setSelectedIndex(items.length - 1)
+    // Clamp selectedIndex to new display bounds
+    const dispItems = displayItems()
+    if (dispItems.length > 0 && selectedIndex() >= dispItems.length) {
+      setSelectedIndex(dispItems.length - 1)
     }
   }
 
@@ -274,7 +277,7 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     if (evt.defaultPrevented) return
     if (evt.ctrl || evt.meta || evt.shift) return
 
-    const items = queue()
+    const items = displayItems()
     if (items.length === 0) return
 
     const name = evt.name ?? ""
@@ -283,10 +286,8 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     if (name === "up" || name === "k") {
       evt.preventDefault()
       setSelectedIndex((idx) => Math.max(0, idx - 1))
-      // Adjust scroll to keep selection visible
       const idx = selectedIndex()
-      const offset = scrollOffset()
-      if (idx < offset) setScrollOffset(idx)
+      if (idx < scrollOffset()) setScrollOffset(idx)
       return
     }
 
@@ -294,14 +295,11 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     if (name === "down" || name === "j") {
       evt.preventDefault()
       setSelectedIndex((idx) => Math.min(items.length - 1, idx + 1))
-      // Adjust scroll to keep selection visible by checking if item is in visible display rows
       const idx = selectedIndex()
-      const visRows = visibleDisplayRows()
-      const visibleItemIndices: number[] = []
-      for (const r of visRows) {
-        if (r.kind === "item") visibleItemIndices.push(queue().indexOf(r.item))
-      }
-      if (!visibleItemIndices.includes(idx)) {
+      const visItems = visibleDisplayRows().filter((r) => r.kind === "item")
+      const visIds = visItems.map((r) => r.kind === "item" ? r.item.source_id : "")
+      const selectedId = items[idx]?.source_id
+      if (selectedId && !visIds.includes(selectedId)) {
         setScrollOffset((prev) => prev + 1)
       }
       return
@@ -447,8 +445,8 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
               const maxTitleWidth = () => Math.max(dimensions().width - 26 - indent, 10)
               const isSelected = () => {
                 const idx = selectedIndex()
-                const q = queue()
-                return idx < q.length && q[idx]?.source_id === item.source_id
+                const items = displayItems()
+                return idx < items.length && items[idx]?.source_id === item.source_id
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
               const isSweeping = () => sweeping() && sweepingSourceId() === item.source_id

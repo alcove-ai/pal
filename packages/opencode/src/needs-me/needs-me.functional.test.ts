@@ -222,6 +222,36 @@ async function main() {
     assert(matchById, "source_id comparison works across refreshes")
   }
 
+  // === DISPLAY ORDER MATCHES SELECTION ORDER ===
+  console.log("\nDisplay vs selection order:")
+
+  // The display rows show items in grouped order (grouped first, ungrouped last)
+  // selectedIndex must index into THIS order, not the flat queue order
+  const displayItemOrder = rows
+    .filter((r): r is typeof r & { kind: "item" } => r.kind === "item")
+    .map((r) => r.item.source_id)
+
+  // Flat queue order (sorted by timestamp)
+  const flatOrder = items.map((i) => i.source_id)
+
+  // If there are grouped items, the orders MUST differ
+  const hasGroups = rows.some((r) => r.kind === "header")
+  if (hasGroups) {
+    const ordersMatch = displayItemOrder.every((id, i) => id === flatOrder[i])
+    assert(!ordersMatch, "grouped display order differs from flat timestamp order")
+    assert(displayItemOrder.length === flatOrder.length, "display and flat lists have same count")
+  }
+
+  // Verify the first displayed item is from the first group (milestone)
+  const firstDisplayedId = displayItemOrder[0]
+  const firstDisplayedItem = items.find((i) => i.source_id === firstDisplayedId)
+  if (hasGroups && firstDisplayedItem) {
+    assert(
+      firstDisplayedItem.milestone !== null || firstDisplayedItem.parent_key !== null,
+      "first displayed item is from a group (not ungrouped)",
+    )
+  }
+
   // === SUMMARY ===
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)
