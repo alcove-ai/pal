@@ -11,7 +11,6 @@ import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
-import { sweepSingle } from "@/sweep/sweep"
 import { get as getRole } from "@/config/role"
 import { load as loadProcessDoc } from "@/process/process-doc"
 import {
@@ -127,8 +126,6 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [overflowSince, setOverflowSince] = createSignal<number | null>(null)
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
-  const [sweeping, setSweeping] = createSignal(false)
-  const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
   const displayRows = () => buildDisplayRows(queue(), collapsedGroups())
   // All selectable items in display order — headers with items are selectable too
@@ -214,68 +211,41 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
       return
     }
 
-    // Show sweeping indicator
-    setSweeping(true)
-    setSweepingSourceId(item.source_id)
-
-    // Sweep the single issue
-    let sweepResult: Awaited<ReturnType<typeof sweepSingle>> = null
-    try {
-      sweepResult = await sweepSingle(item.source_id)
-    } catch (err) {
-      // Continue anyway, will launch triage without sweep result
-    }
-
-    setSweeping(false)
-    setSweepingSourceId(null)
-
     // Create new session
-    const phaseSuffix = sweepResult?.phase ? ` [${sweepResult.phase}]` : ""
     const result = await props.api.client.session.create({
-      title: `Triage${phaseSuffix}: ${item.title.slice(0, 50)}`,
+      title: `Triage: ${item.title.slice(0, 50)}`,
     })
     if (!result.data?.id) return
 
     const sessionID = result.data.id
     triageSessionMap.set(item.source_id, sessionID)
 
+    // Navigate immediately — user sees the session right away
+    props.api.route.navigate("session", { sessionID })
+
     // Load process doc and role for context
     const processDoc = loadProcessDoc() ?? "No process document configured."
     const role = getRole() ?? "No role configured."
 
     // Build context message
-    let contextText = `Process context from your team's process document:
+    const contextText = `Process context from your team's process document:
 ${processDoc}
 
 Your role: ${role}
 
 Issue: ${item.title}
 URL: ${item.url ?? "none"}
-`
 
-    if (sweepResult) {
-      contextText += `
-Sweep analysis:
-Summary: ${sweepResult.summary}
-Recommended action: ${sweepResult.action}
-Priority: ${sweepResult.priority}
-${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
-`
-    }
+Help me take this action. Fetch the full issue details first.`
 
-    contextText += "\nHelp me take this action. Fetch the full issue details first."
-
-    // Send initial context
-    await props.api.client.session.prompt({
+    // Fire prompt in background (don't await)
+    void props.api.client.session.prompt({
       sessionID,
       parts: [{
         type: "text" as const,
         text: contextText,
       }],
     })
-
-    // Navigate to session
-    props.api.route.navigate("session", { sessionID })
   }
 
   // Keyboard handling
@@ -366,11 +336,10 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
   onCleanup(() => { if (refreshTimer) clearInterval(refreshTimer) })
 
   const visibleHeight = () => {
-    // Header takes 3 rows (or 4 with overflow), footer takes 1 row, sweeping message takes 1 row (optional)
+    // Header takes 3 rows (or 4 with overflow), footer takes 1 row
     const headerRows = overflowAlert() ? 4 : 3
     const footerRows = 1
-    const sweepingRows = sweeping() ? 1 : 0
-    const availableRows = Math.max(dimensions().height - headerRows - footerRows - sweepingRows, 2)
+    const availableRows = Math.max(dimensions().height - headerRows - footerRows, 2)
     return availableRows
   }
   const visibleDisplayRows = (): DisplayRow[] => {
@@ -423,12 +392,6 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
         <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title</text></box>
         <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
-      <Show when={sweeping()}>
-        <box height={1} flexShrink={0} paddingLeft={1} backgroundColor={theme.backgroundPanel}>
-          <text fg={theme.primary} attributes={TextAttributes.BOLD}>{"⟳ Analyzing: "}</text>
-          <text fg={theme.text}>{queue().find(item => item.source_id === sweepingSourceId())?.title ?? "..."}</text>
-        </box>
-      </Show>
       <Show when={queue().length > 0} fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
           <Show when={hasEverLoaded()} fallback={
@@ -483,14 +446,13 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
                 return idx < items.length && items[idx]?.source_id === item.source_id
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
-              const isSweeping = () => sweeping() && sweepingSourceId() === item.source_id
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{sourceChar(item.source)} </text></box>
                     <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : theme.text} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{hasTriage() ? "● " : ""}{isSweeping() ? "⟳ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : theme.text} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={12 + indent}>
