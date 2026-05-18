@@ -76,7 +76,7 @@ async function callVertexClaude(system: string, prompt: string): Promise<{ summa
   }
 }
 
-interface IssueSnapshot {
+export interface IssueSnapshot {
   source_id: string
   source: string
   title: string
@@ -131,7 +131,23 @@ function loadIssueSnapshots(): IssueSnapshot[] {
   })
 }
 
-function buildIssueContext(issue: IssueSnapshot, memoryContext?: string): string {
+export function buildSystemPrompt(processDoc: string, role: string): string {
+  return [
+    "You are a process facilitator for a software team.",
+    "You understand the team's development process and the user's role in it.",
+    "Assess each work item and tell the user specifically what THEY need to do next given their role.",
+    "Respond with ONLY a JSON object: {\"summary\": \"...\", \"action\": \"...\", \"priority\": \"urgent|soon|normal|low\", \"phase\": \"...\"}",
+    "Be concise — 1-2 sentences for summary, 1 sentence for action.",
+    "",
+    "=== TEAM PROCESS ===",
+    processDoc,
+    "",
+    "=== USER'S ROLE ===",
+    role,
+  ].join("\n")
+}
+
+export function buildIssueContext(issue: IssueSnapshot, memoryContext?: string): string {
   const lines: string[] = [
     `Title: ${issue.title}`,
     `Source: ${issue.source} (${issue.source_id})`,
@@ -171,19 +187,7 @@ async function sweepIssue(issue: IssueSnapshot, processDoc: string, role: string
   const memoryContext = await searchRelated(issue.title)
   const issueContext = buildIssueContext(issue, memoryContext)
 
-  const system = [
-    "You are a process facilitator for a software team.",
-    "You understand the team's development process and the user's role in it.",
-    "Assess each work item and tell the user specifically what THEY need to do next given their role.",
-    "Respond with ONLY a JSON object: {\"summary\": \"...\", \"action\": \"...\", \"priority\": \"urgent|soon|normal|low\", \"phase\": \"...\"}",
-    "Be concise — 1-2 sentences for summary, 1 sentence for action.",
-    "",
-    "=== TEAM PROCESS ===",
-    processDoc,
-    "",
-    "=== USER'S ROLE ===",
-    role,
-  ].join("\n")
+  const system = buildSystemPrompt(processDoc, role)
 
   try {
     const result = await callVertexClaude(system, issueContext)
@@ -321,19 +325,7 @@ export async function sweepSingle(sourceId: string): Promise<{
   }
   const issueContext = buildIssueContext(issue, memoryContext)
 
-  const system = [
-    "You are a process facilitator for a software team.",
-    "You understand the team's development process and the user's role in it.",
-    "Assess each work item and tell the user specifically what THEY need to do next given their role.",
-    "Respond with ONLY a JSON object: {\"summary\": \"...\", \"action\": \"...\", \"priority\": \"urgent|soon|normal|low\", \"phase\": \"...\"}",
-    "Be concise — 1-2 sentences for summary, 1 sentence for action.",
-    "",
-    "=== TEAM PROCESS ===",
-    processDoc,
-    "",
-    "=== USER'S ROLE ===",
-    role,
-  ].join("\n")
+  const system = buildSystemPrompt(processDoc, role)
 
   try {
     const result = await callVertexClaude(system, issueContext)
