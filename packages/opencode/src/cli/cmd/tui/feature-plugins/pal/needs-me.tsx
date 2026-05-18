@@ -328,8 +328,8 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
       return
     }
 
-    // e: expand/collapse group
-    if (name === "e") {
+    // Left: collapse group, Right: expand group
+    if (name === "left" || name === "right") {
       evt.preventDefault()
       const item = items[selectedIndex()]
       if (item) {
@@ -337,8 +337,8 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
         if (groupKey) {
           setCollapsedGroups((prev) => {
             const next = new Set(prev)
-            if (next.has(groupKey)) next.delete(groupKey)
-            else next.add(groupKey)
+            if (name === "left") next.add(groupKey)
+            else next.delete(groupKey)
             return next
           })
         }
@@ -386,7 +386,7 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     const result: DisplayRow[] = []
     let usedRows = 0
     for (let i = startIdx; i < rows.length; i++) {
-      const rowHeight = rows[i].kind === "header" ? 1 : 2
+      const rowHeight = 2
       if (usedRows + rowHeight > maxRows) break
       result.push(rows[i])
       usedRows += rowHeight
@@ -447,14 +447,22 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
                   const items = displayItems()
                   return idx < items.length && items[idx]?.source_id === headerItem.source_id
                 }
+                const hsel = headerSelected
+                const hfg = () => hsel() ? theme.primary : theme.text
+                const hmuted = () => hsel() ? theme.primary : theme.textMuted
+                const maxW = () => Math.max(dimensions().width - 30, 10)
                 return (
-                  <box height={1} flexDirection="row" paddingLeft={1} backgroundColor={headerSelected() ? theme.backgroundElement : undefined}>
-                    <box width={2} flexShrink={0}><text fg={headerSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{headerSelected() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
-                    <text fg={headerSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>
-                      {row.label}{" ("}{row.count}{")"}</text>
-                    <Show when={headerItem}>
-                      <text fg={headerSelected() ? theme.primary : theme.textMuted}>{" · "}{formatTimestamp(headerItem!.last_event_ts)}</text>
-                    </Show>
+                  <box flexDirection="column" backgroundColor={hsel() ? theme.backgroundElement : undefined}>
+                    <box height={1} flexDirection="row" paddingLeft={1}>
+                      <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{hsel() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
+                      <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
+                      <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
+                      <box flexGrow={1}><text fg={hfg()} attributes={TextAttributes.BOLD}>{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
+                      <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
+                    </box>
+                    <box height={1} flexDirection="row" paddingLeft={12}>
+                      <text fg={hmuted()} attributes={hsel() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
+                    </box>
                   </box>
                 )
               }
@@ -489,7 +497,7 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k select  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"e expand/collapse"}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand"}</text>
         </box>
       </Show>
     </box>
