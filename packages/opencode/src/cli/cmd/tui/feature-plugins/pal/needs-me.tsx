@@ -335,12 +335,24 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
       if (item) {
         const groupKey = item.parent_key ?? item.milestone
         if (groupKey) {
-          setCollapsedGroups((prev) => {
-            const next = new Set(prev)
-            if (name === "left") next.add(groupKey)
-            else next.delete(groupKey)
-            return next
-          })
+          if (name === "left") {
+            setCollapsedGroups((prev) => { const next = new Set(prev); next.add(groupKey); return next })
+            // Move selection to the group header after collapse
+            const newItems = displayItems()
+            const headerIdx = newItems.findIndex((i) => i.source_id === item.source_id || (i.parent_key === null && i.milestone === groupKey) || i.source_id.endsWith("#" + groupKey))
+            // Find the header item — it's the one whose source_id matches the groupKey
+            const rows = displayRows()
+            const headerRow = rows.find((r) => r.kind === "header" && r.groupKey === groupKey)
+            if (headerRow?.kind === "header" && headerRow.item) {
+              const hdrIdx = displayItems().findIndex((i) => i.source_id === headerRow.item!.source_id)
+              if (hdrIdx >= 0) {
+                setSelectedIndex(hdrIdx)
+                if (hdrIdx < scrollOffset()) setScrollOffset(hdrIdx)
+              }
+            }
+          } else {
+            setCollapsedGroups((prev) => { const next = new Set(prev); next.delete(groupKey); return next })
+          }
         }
       }
       return
@@ -365,21 +377,16 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
     const offset = scrollOffset()
     const maxRows = visibleHeight()
 
-    // Find the display row that contains the item at scrollOffset
-    let itemCount = 0
+    // scrollOffset indexes into displayItems (selectable items).
+    // Map that to a position in the full displayRows array.
+    let selectableCount = 0
     let startIdx = 0
     for (let i = 0; i < rows.length; i++) {
-      if (rows[i].kind === "item") {
-        if (itemCount === offset) { startIdx = i; break }
-        itemCount++
-      } else if (itemCount <= offset) {
-        // Include headers that appear before or at the scroll position
-        startIdx = i
+      const isSelectable = rows[i].kind === "item" || (rows[i].kind === "header" && rows[i].item !== null)
+      if (isSelectable) {
+        if (selectableCount === offset) { startIdx = i; break }
+        selectableCount++
       }
-    }
-    // Walk backwards to include the group header if the first visible item is indented
-    if (startIdx > 0 && rows[startIdx].kind === "item" && rows[startIdx - 1]?.kind === "header") {
-      startIdx--
     }
 
     // Collect rows that fit in available height
