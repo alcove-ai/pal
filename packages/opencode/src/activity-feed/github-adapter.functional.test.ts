@@ -131,6 +131,25 @@ async function main() {
   const ungrouped = rows.filter((r) => r.kind === "item" && !r.indented)
   assert(ungrouped.length > 0, "ungrouped items exist")
 
+  // === LARGE REPO TEST (catches maxBuffer and pagination bugs) ===
+  console.log("\nLarge repo (alcove-ai/alcove):")
+
+  const largeAdapter = createGitHubAdapter({
+    tier1Repos: ["alcove-ai/alcove"],
+    tier2Repos: [],
+    tier3Repos: [],
+    botIgnoreList: ["dependabot[bot]", "renovate[bot]", "github-actions[bot]"],
+  })
+
+  const largeEvents = await largeAdapter.poll()
+  assert(largeEvents.length > 50, `large repo returns many events (got ${largeEvents.length}, expected >50)`)
+
+  const issueEvents = largeEvents.filter((e: any) => e.event_type === "issue_opened" || e.event_type === "issue_closed")
+  assert(issueEvents.length > 5, `large repo has issues (got ${issueEvents.length}, expected >5)`)
+
+  const prEvents = largeEvents.filter((e: any) => e.event_type === "pr_merged" || e.event_type === "pr_opened" || e.event_type === "pr_closed")
+  assert(prEvents.length > 20, `large repo has PRs (got ${prEvents.length}, expected >20)`)
+
   // --- Summary ---
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)

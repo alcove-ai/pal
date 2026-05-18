@@ -164,13 +164,18 @@ async function ghExec(args: string[]): Promise<string | null> {
   const { promisify } = await import("util")
   const execFileAsync = promisify(execFile)
   try {
-    const { stdout } = await execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000, env: process.env })
+    const { stdout } = await execFileAsync("gh", args, {
+      encoding: "utf-8",
+      timeout: 60_000,
+      maxBuffer: 50 * 1024 * 1024,
+      env: process.env,
+    })
     return stdout.trim()
   } catch (err: any) {
-    if (err.code !== undefined) {
-      log.debug("gh command failed", { args: args.join(" "), stderr: (err.stderr ?? "").slice(0, 200) })
+    if (err.stderr) {
+      log.debug("gh command failed", { args: args.join(" "), stderr: err.stderr.slice(0, 200) })
     } else {
-      log.debug("gh exec error", { args: args.join(" "), error: err })
+      log.debug("gh exec error", { args: args.join(" "), error: err instanceof Error ? err.message : String(err) })
     }
     return null
   }
@@ -182,8 +187,14 @@ async function ghApi<T>(path: string): Promise<T | null> {
   try {
     return JSON.parse(raw) as T
   } catch {
-    log.debug("failed to parse gh api response", { path, raw: raw.slice(0, 200) })
-    return null
+    // --paginate concatenates JSON arrays: [...]\n[...] — merge them
+    try {
+      const merged = raw.replace(/\]\s*\[/g, ",")
+      return JSON.parse(merged) as T
+    } catch {
+      log.debug("failed to parse gh api response", { path, raw: raw.slice(0, 200) })
+      return null
+    }
   }
 }
 
