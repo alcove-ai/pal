@@ -14,6 +14,13 @@ import { recordTriageDecision } from "@/needs-me/decisions"
 import { sweepSingle } from "@/sweep/sweep"
 import { get as getRole } from "@/config/role"
 import { load as loadProcessDoc } from "@/process/process-doc"
+import {
+  buildDisplayRows,
+  DONE_EVENT_TYPES,
+  DONE_JIRA_STATUSES,
+  type ActivityItem,
+  type DisplayRow,
+} from "@/needs-me/needs-me-logic"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -21,24 +28,6 @@ const OVERFLOW_THRESHOLD = 20
 const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
 const SUPPRESSION_DECAY_MS = 30 * 24 * 60 * 60 * 1000
-
-type ActivityItem = {
-  source_id: string
-  source: string
-  title: string
-  url: string | null
-  actor: string | null
-  last_event_ts: number
-  event_type: string
-  summary: string | null
-  parent_key: string | null
-  issue_type: string | null
-  milestone: string | null
-}
-
-type DisplayRow =
-  | { kind: "header"; groupKey: string; label: string; count: number; collapsed: boolean }
-  | { kind: "item"; item: ActivityItem; indented: boolean }
 
 function formatTimestamp(ts: number): string {
   const now = Date.now(); const diff = now - ts
@@ -62,41 +51,6 @@ function getSnoozedKeys(): Map<string, number> {
   try { const now = Date.now(); return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key, snooze_until: DismissedEventTable.snooze_until }).from(DismissedEventTable).where(and(eq(DismissedEventTable.action, "snooze"), gt(DismissedEventTable.snooze_until, now))).all(); const map = new Map<string, number>(); for (const r of rows) { if (r.snooze_until) map.set(r.work_item_key, r.snooze_until) }; return map }) } catch { return new Map() }
 }
 
-function buildDisplayRows(items: ActivityItem[], collapsedGroups: Set<string>): DisplayRow[] {
-  const groups = new Map<string, { label: string; items: ActivityItem[] }>()
-  const ungrouped: ActivityItem[] = []
-
-  for (const item of items) {
-    const groupKey = item.parent_key ?? item.milestone
-    if (groupKey) {
-      if (!groups.has(groupKey)) {
-        const label = item.parent_key ? `${item.parent_key}` : `Milestone: ${item.milestone}`
-        groups.set(groupKey, { label, items: [] })
-      }
-      groups.get(groupKey)!.items.push(item)
-    } else {
-      ungrouped.push(item)
-    }
-  }
-
-  const rows: DisplayRow[] = []
-  for (const [groupKey, group] of groups) {
-    const parentItem = items.find((i) => i.source_id === groupKey || i.source_id.endsWith("#" + groupKey))
-    const label = parentItem ? `${groupKey}: ${parentItem.title.replace(`${groupKey}: `, "")}` : group.label
-    const collapsed = collapsedGroups.has(groupKey)
-    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed })
-    if (!collapsed) {
-      for (const item of group.items) {
-        rows.push({ kind: "item", item, indented: true })
-      }
-    }
-  }
-  for (const item of ungrouped) {
-    rows.push({ kind: "item", item, indented: false })
-  }
-  return rows
-}
-
 function computeFilteredQueue(): ActivityItem[] {
   try {
     return Database.use((db) => {
@@ -108,8 +62,6 @@ function computeFilteredQueue(): ActivityItem[] {
         .limit(1000)
         .all()
 
-      const DONE_EVENT_TYPES = new Set(["pr_merged", "pr_closed", "issue_closed"])
-      const DONE_JIRA_STATUSES = new Set(["Closed", "Done", "Resolved"])
       const doneSourceIds = new Set<string>()
 
       // Group by source_id and take the latest event, also track done items
