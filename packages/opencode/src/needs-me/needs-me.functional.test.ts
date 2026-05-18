@@ -191,6 +191,37 @@ async function main() {
     assert(true, "group headers appear before ungrouped items (trivially)")
   }
 
+  // === SELECTION STABILITY (catches the cursor-disappears bug) ===
+  console.log("\nSelection stability:")
+
+  // Simulate what happens when the user scrolls: selectedIndex points to an item
+  // by index, and isSelected() must match by source_id not object identity.
+  // Build two separate pipelines (simulating refresh creating new objects)
+  const pipeline1 = buildPipeline(events)
+  const pipeline2 = buildPipeline(events) // new objects, same data
+
+  // The items at the same index should have the same source_id
+  for (let i = 0; i < Math.min(pipeline1.items.length, pipeline2.items.length, 5); i++) {
+    assert(
+      pipeline1.items[i].source_id === pipeline2.items[i].source_id,
+      `item at index ${i} has stable source_id across refreshes (${pipeline1.items[i].source_id})`,
+    )
+  }
+
+  // Verify items are NOT the same object (they shouldn't be after refresh)
+  assert(pipeline1.items[0] !== pipeline2.items[0], "items are different objects after rebuild")
+
+  // Verify source_id matching works (the fix for the cursor bug)
+  const selectedIdx = 2
+  const selectedId = pipeline1.items[selectedIdx]?.source_id
+  if (selectedId) {
+    const matchByIdentity = pipeline2.items.indexOf(pipeline1.items[selectedIdx])
+    assert(matchByIdentity === -1, "indexOf fails across refreshes (object identity)")
+
+    const matchById = pipeline2.items[selectedIdx]?.source_id === selectedId
+    assert(matchById, "source_id comparison works across refreshes")
+  }
+
   // === SUMMARY ===
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)

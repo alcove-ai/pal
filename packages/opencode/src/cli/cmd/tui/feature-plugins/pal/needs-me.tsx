@@ -446,24 +446,23 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
               const indent = row.indented ? 2 : 0
               const maxTitleWidth = () => Math.max(dimensions().width - 26 - indent, 10)
               const isSelected = () => {
-                return queue().indexOf(item) === selectedIndex()
+                const idx = selectedIndex()
+                const q = queue()
+                return idx < q.length && q[idx]?.source_id === item.source_id
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
               const isSweeping = () => sweeping() && sweepingSourceId() === item.source_id
-              const sel = isSelected()
-              const titleFg = sel ? theme.primary : theme.text
-              const metaFg = sel ? theme.primary : theme.textMuted
               return (
-                <box flexDirection="column" backgroundColor={sel ? theme.backgroundElement : undefined}>
+                <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
-                    <box width={2} flexShrink={0}><text fg={sel ? theme.primary : theme.textMuted} attributes={sel ? TextAttributes.BOLD : undefined}>{sel ? "▸" : " "} </text></box>
-                    <box width={2} flexShrink={0}><text fg={metaFg}>{sourceChar(item.source)} </text></box>
-                    <box width={8} flexShrink={0}><text fg={metaFg}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={titleFg} attributes={sel ? TextAttributes.BOLD : undefined}>{hasTriage() ? "● " : ""}{isSweeping() ? "⟳ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
-                    <box width={14} flexShrink={0}><text fg={metaFg}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{sourceChar(item.source)} </text></box>
+                    <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
+                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : theme.text} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{hasTriage() ? "● " : ""}{isSweeping() ? "⟳ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={12 + indent}>
-                    <text fg={sel ? theme.primary : theme.textMuted} attributes={sel ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
+                    <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
                   </box>
                 </box>
               )
