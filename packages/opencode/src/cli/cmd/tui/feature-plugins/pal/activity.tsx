@@ -29,25 +29,56 @@ function sourceIcon(source: ActivitySource): string {
 function eventTypeBadge(eventType: ActivityEventType): string {
   switch (eventType) {
     case "issue_created": return "NEW"
+    case "issue_opened": return "ISS"
+    case "issue_closed": return "CLS"
+    case "issue_commented": return "CMT"
+    case "pr_opened": return "PR"
+    case "pr_merged": return "MRG"
+    case "pr_closed": return "CLS"
+    case "pr_commented": return "CMT"
+    case "review_requested": return "REV"
+    case "review_submitted": return "RVW"
+    case "mentioned": return "MEN"
+    case "ci_failed": return "CI!"
     case "status_changed": return "STS"
     case "assigned": return "ASG"
     case "commented": return "CMT"
     case "priority_changed": return "PRI"
     case "blocked": return "BLK"
     case "field_updated": return "UPD"
-    default: return "???"
+    case "mr_opened": return "MR"
+    case "mr_merged": return "MRG"
+    case "mr_commented": return "CMT"
+    case "pipeline_failed": return "CI!"
+    default: return String(eventType).slice(0, 3).toUpperCase()
   }
 }
 
 function eventTypeColor(eventType: ActivityEventType, theme: any): string {
   switch (eventType) {
-    case "issue_created": return theme.success ?? theme.primary
-    case "status_changed": return theme.info ?? theme.primary
-    case "assigned": return theme.warning ?? theme.primary
-    case "commented": return theme.textMuted
-    case "priority_changed": return theme.warning ?? theme.primary
-    case "blocked": return theme.error ?? theme.primary
-    case "field_updated": return theme.textMuted
+    case "issue_created":
+    case "issue_opened":
+    case "pr_opened":
+    case "mr_opened":
+      return theme.success ?? theme.primary
+    case "pr_merged":
+    case "mr_merged":
+      return theme.primary
+    case "issue_closed":
+    case "pr_closed":
+      return theme.textMuted
+    case "status_changed":
+    case "review_submitted":
+      return theme.info ?? theme.primary
+    case "assigned":
+    case "review_requested":
+    case "priority_changed":
+    case "mentioned":
+      return theme.warning ?? theme.primary
+    case "ci_failed":
+    case "pipeline_failed":
+    case "blocked":
+      return theme.error ?? theme.primary
     default: return theme.textMuted
   }
 }
@@ -220,13 +251,9 @@ function ActivityView() {
       </box>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
-        <box width={3} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
         <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Type</text></box>
-        <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Who</text></box>
-        <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Mode</text></box>
-        <box width={5} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Rel</text></box>
-        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title / Summary</text></box>
-        <box width={16} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
+        <box flexGrow={1}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Title</text></box>
+        <box width={14} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Actor</text></box>
       </box>
       <Show when={events().length > 0} fallback={
         <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
@@ -248,33 +275,19 @@ function ActivityView() {
               const relLevel = () => event.relevance as RelevanceLevel | null
               const relColor = () => relevanceColor(relLevel(), theme)
               const showRelevance = () => isUpstreamSource(event.source)
-              const maxTitleWidth = () => Math.max(dimensions().width - 45, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 28, 10)
 
               return (
                 <box height={1} flexDirection="row" paddingLeft={1}>
                   <box width={8} flexShrink={0}><text fg={theme.textMuted}>{formatTimestamp(event.timestamp)}</text></box>
-                  <box width={3} flexShrink={0}><text fg={theme.primary} attributes={TextAttributes.BOLD}>{sourceIcon(event.source as ActivitySource)}</text></box>
-                  <box width={5} flexShrink={0}><text fg={badgeColor()}>{eventTypeBadge(event.event_type as ActivityEventType)}</text></box>
-                  <box width={5} flexShrink={0}>
-                    <text fg={event.actor_type === "agent" ? (theme.warning ?? theme.primary) : theme.textMuted} attributes={event.actor_type === "agent" ? TextAttributes.BOLD : 0}>
-                      {actorTypeBadge(event.actor_type ?? "human")}
-                    </text>
-                  </box>
-                  <box width={5} flexShrink={0}>
-                    <text fg={(event as any).mode === "watch" ? theme.textMuted : theme.primary} attributes={(event as any).mode === "watch" ? TextAttributes.DIM : TextAttributes.BOLD}>
-                      {modeBadge((event as any).mode)}
-                    </text>
-                  </box>
-                  <box width={5} flexShrink={0}>
-                    <Show when={showRelevance()}>
-                      <text fg={relColor()} attributes={relLevel() === "must-act" ? TextAttributes.BOLD : 0}>{relevanceBadge(relLevel())}</text>
-                    </Show>
-                  </box>
+                  <box width={5} flexShrink={0}><text fg={badgeColor()} attributes={TextAttributes.BOLD}>{eventTypeBadge(event.event_type as ActivityEventType)}</text></box>
                   <box flexGrow={1}>
                     <text fg={fg()}>{event.title.length > maxTitleWidth() ? event.title.slice(0, maxTitleWidth() - 1) + "…" : event.title}</text>
                   </box>
-                  <box width={16} flexShrink={0}>
-                    <text fg={theme.textMuted}>{(event.actor ?? "").length > 14 ? (event.actor ?? "").slice(0, 13) + "…" : (event.actor ?? "")}</text>
+                  <box width={14} flexShrink={0}>
+                    <text fg={event.actor_type === "agent" ? (theme.warning ?? theme.primary) : theme.textMuted}>
+                      {(event.actor ?? "").length > 12 ? (event.actor ?? "").slice(0, 11) + "…" : (event.actor ?? "")}
+                    </text>
                   </box>
                 </box>
               )
