@@ -64,9 +64,23 @@ export function buildDisplayRows(items: ActivityItem[], collapsedGroups: Set<str
   for (const [groupKey, group] of groups) {
     // Find the parent item (milestone/epic itself) — it may be in the items list
     const parentItem = items.find((i) => i.source_id === groupKey || i.source_id.endsWith("#" + groupKey))
+    // If no parent item exists (e.g. milestones aren't issues), create a synthetic one from child data
+    const headerItem: ActivityItem = parentItem ?? {
+      source_id: `_group_${groupKey}`,
+      source: group.items[0]?.source ?? "github",
+      title: group.label,
+      url: null,
+      actor: null,
+      last_event_ts: Math.max(...group.items.map((i) => i.last_event_ts)),
+      event_type: "group",
+      summary: `${group.items.length} sub-issue${group.items.length !== 1 ? "s" : ""}`,
+      parent_key: null,
+      issue_type: null,
+      milestone: groupKey,
+    }
     const label = parentItem ? `${parentItem.title}` : group.label
     const collapsed = collapsedGroups.has(groupKey)
-    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed, item: parentItem ?? null })
+    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed, item: headerItem })
     if (!collapsed) {
       for (const item of group.items) {
         rows.push({ kind: "item", item, indented: true })

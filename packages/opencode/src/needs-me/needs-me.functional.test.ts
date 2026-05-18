@@ -252,6 +252,41 @@ async function main() {
     )
   }
 
+  // === HEADER SELECTABILITY (catches the can't-select-milestone bug) ===
+  console.log("\nHeader selectability:")
+
+  // Every header must have a non-null item so it's selectable
+  const allHeaders = rows.filter((r) => r.kind === "header") as Array<{ kind: "header"; item: ActivityItem | null; groupKey: string; label: string; count: number; collapsed: boolean }>
+  for (const header of allHeaders) {
+    assert(header.item !== null, `header "${header.label}" has a selectable item`)
+    if (header.item) {
+      assert(header.item.source_id.length > 0, `header "${header.label}" item has a source_id`)
+    }
+  }
+
+  // displayItems must include header items — count should be items + headers-with-items
+  const selectableFromRows: ActivityItem[] = []
+  for (const r of rows) {
+    if (r.kind === "header" && r.item) selectableFromRows.push(r.item)
+    else if (r.kind === "item") selectableFromRows.push(r.item)
+  }
+  assert(selectableFromRows.length > items.length, "selectable items includes header items (more than just child items)")
+
+  // Verify you can "select" every header by finding its index in selectableFromRows
+  for (const header of allHeaders) {
+    if (header.item) {
+      const idx = selectableFromRows.findIndex((i) => i.source_id === header.item!.source_id)
+      assert(idx >= 0, `header "${header.label}" is reachable at index ${idx}`)
+    }
+  }
+
+  // After collapsing, header is still selectable
+  const allCollapsedRows = buildDisplayRows(items, new Set(allHeaders.map((h) => h.groupKey)))
+  const collapsedHeaders = allCollapsedRows.filter((r) => r.kind === "header") as typeof allHeaders
+  for (const header of collapsedHeaders) {
+    assert(header.item !== null, `collapsed header "${header.label}" still has a selectable item`)
+  }
+
   // === SUMMARY ===
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)
