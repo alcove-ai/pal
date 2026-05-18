@@ -160,22 +160,18 @@ function extractNumberFromUrl(url: string): string | null {
 }
 
 async function ghExec(args: string[]): Promise<string | null> {
+  const { execFile } = await import("child_process")
+  const { promisify } = await import("util")
+  const execFileAsync = promisify(execFile)
   try {
-    const proc = Bun.spawn(["gh", ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env },
-    })
-    const stdout = await new Response(proc.stdout).text()
-    const exitCode = await proc.exited
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text()
-      log.debug("gh command failed", { args: args.join(" "), exitCode, stderr: stderr.slice(0, 200) })
-      return null
-    }
+    const { stdout } = await execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000, env: process.env })
     return stdout.trim()
-  } catch (err) {
-    log.debug("gh exec error", { args: args.join(" "), error: err })
+  } catch (err: any) {
+    if (err.code !== undefined) {
+      log.debug("gh command failed", { args: args.join(" "), stderr: (err.stderr ?? "").slice(0, 200) })
+    } else {
+      log.debug("gh exec error", { args: args.join(" "), error: err })
+    }
     return null
   }
 }
