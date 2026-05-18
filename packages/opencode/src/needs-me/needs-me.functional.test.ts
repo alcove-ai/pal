@@ -65,6 +65,7 @@ function buildPipeline(events: any[]): { items: ActivityItem[]; rows: DisplayRow
         parent_key: (evt.metadata?.parent_key as string) ?? null,
         issue_type: (evt.metadata?.issue_type as string) ?? null,
         milestone: (evt.metadata?.milestone as string) ?? null,
+        milestone_url: (evt.metadata?.milestone_url as string) ?? null,
       })
     }
   }
@@ -285,6 +286,18 @@ async function main() {
   const collapsedHeaders = allCollapsedRows.filter((r) => r.kind === "header") as typeof allHeaders
   for (const header of collapsedHeaders) {
     assert(header.item !== null, `collapsed header "${header.label}" still has a selectable item`)
+  }
+
+  // === MILESTONE URL (catches the "URL: none" bug in sweep prompt) ===
+  console.log("\nMilestone URLs:")
+
+  for (const header of allHeaders) {
+    if (header.item) {
+      assert(header.item.url !== null, `header "${header.label}" has a non-null URL`)
+      if (header.item.url) {
+        assert(header.item.url.includes("milestone") || header.item.url.includes("github"), `header "${header.label}" URL is valid (${header.item.url})`)
+      }
+    }
   }
 
   // === SUMMARY ===

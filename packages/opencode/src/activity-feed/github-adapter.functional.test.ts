@@ -99,6 +99,7 @@ async function main() {
         parent_key: (evt.metadata?.parent_key as string) ?? null,
         issue_type: (evt.metadata?.issue_type as string) ?? null,
         milestone: (evt.metadata?.milestone as string) ?? null,
+        milestone_url: (evt.metadata?.milestone_url as string) ?? null,
       })
     }
   }

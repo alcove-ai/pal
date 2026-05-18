@@ -542,6 +542,7 @@ async function pollTier1Issues(tier1: string[], bots: Set<string>, agentConfig?:
         labels,
         assignee: issue.assignee?.login ?? null,
         milestone: issue.milestone?.title ?? null,
+        milestone_url: issue.milestone ? `https://github.com/${repo}/milestone/${issue.milestone.number}` : null,
       }
 
       if (issue.state === "closed") {

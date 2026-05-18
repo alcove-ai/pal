@@ -79,6 +79,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "item2",
@@ -92,6 +93,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -116,6 +118,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "SUB-2",
@@ -129,6 +132,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -140,7 +144,7 @@ describe("buildDisplayRows", () => {
       label: "PROJ-123",
       count: 2,
       collapsed: false,
-      item: null,
+      item: expect.anything(),
     })
     expect(rows[1]).toEqual({ kind: "item", item: items[0], indented: true })
     expect(rows[2]).toEqual({ kind: "item", item: items[1], indented: true })
@@ -160,6 +164,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: null,
         milestone: "v1.0",
+        milestone_url: "https://github.com/org/repo/milestone/1",
       },
       {
         source_id: "issue2",
@@ -173,6 +178,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: null,
         milestone: "v1.0",
+        milestone_url: "https://github.com/org/repo/milestone/1",
       },
     ]
 
@@ -184,7 +190,7 @@ describe("buildDisplayRows", () => {
       label: "Milestone: v1.0",
       count: 2,
       collapsed: false,
-      item: null,
+      item: expect.anything(),
     })
     expect(rows[1]).toEqual({ kind: "item", item: items[0], indented: true })
     expect(rows[2]).toEqual({ kind: "item", item: items[1], indented: true })
@@ -204,6 +210,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -215,7 +222,7 @@ describe("buildDisplayRows", () => {
       label: "PROJ-123",
       count: 1,
       collapsed: true,
-      item: null,
+      item: expect.anything(),
     })
   })
 
@@ -233,6 +240,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "issue1",
@@ -246,6 +254,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -276,6 +285,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "SUB-1",
@@ -289,6 +299,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -315,6 +326,7 @@ describe("buildDisplayRows", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "SUB-1",
@@ -328,6 +340,7 @@ describe("buildDisplayRows", () => {
         parent_key: "PROJ-123",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -354,6 +367,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "pr2",
@@ -367,6 +381,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -395,6 +410,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "issue2",
@@ -408,6 +424,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -436,6 +453,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "PROJ-2",
@@ -449,6 +467,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -480,6 +499,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -504,6 +524,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: "Task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -528,6 +549,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "issue1",
@@ -541,6 +563,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -568,6 +591,7 @@ describe("filterDoneItems", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -599,6 +623,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: "v2.0",
+        milestone_url: "https://github.com/test/milestone/2",
       },
       {
         source_id: "issue2",
@@ -612,6 +637,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: "v2.0",
+        milestone_url: "https://github.com/test/milestone/2",
       },
     ]
 
@@ -638,6 +664,7 @@ describe("Regression tests", () => {
         parent_key: "EPIC-1",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "SUB-2",
@@ -651,6 +678,7 @@ describe("Regression tests", () => {
         parent_key: "EPIC-1",
         issue_type: "Sub-task",
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -677,6 +705,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -702,6 +731,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 
@@ -726,6 +756,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
       {
         source_id: "pr2",
@@ -739,6 +770,7 @@ describe("Regression tests", () => {
         parent_key: null,
         issue_type: null,
         milestone: null,
+        milestone_url: null,
       },
     ]
 

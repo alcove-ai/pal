@@ -93,6 +93,7 @@ function computeFilteredQueue(): ActivityItem[] {
             parent_key: (meta?.parent_key as string) ?? null,
             issue_type: (meta?.issue_type as string) ?? null,
             milestone: (meta?.milestone as string) ?? null,
+            milestone_url: (meta?.milestone_url as string) ?? null,
           })
         }
       }
