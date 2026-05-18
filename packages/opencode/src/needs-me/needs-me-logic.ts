@@ -21,7 +21,7 @@ export type ActivityItem = {
 }
 
 export type DisplayRow =
-  | { kind: "header"; groupKey: string; label: string; count: number; collapsed: boolean }
+  | { kind: "header"; groupKey: string; label: string; count: number; collapsed: boolean; item: ActivityItem | null }
   | { kind: "item"; item: ActivityItem; indented: boolean }
 
 /**
@@ -62,10 +62,11 @@ export function buildDisplayRows(items: ActivityItem[], collapsedGroups: Set<str
 
   const rows: DisplayRow[] = []
   for (const [groupKey, group] of groups) {
+    // Find the parent item (milestone/epic itself) — it may be in the items list
     const parentItem = items.find((i) => i.source_id === groupKey || i.source_id.endsWith("#" + groupKey))
-    const label = parentItem ? `${groupKey}: ${parentItem.title.replace(`${groupKey}: `, "")}` : group.label
+    const label = parentItem ? `${parentItem.title}` : group.label
     const collapsed = collapsedGroups.has(groupKey)
-    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed })
+    rows.push({ kind: "header", groupKey, label, count: group.items.length, collapsed, item: parentItem ?? null })
     if (!collapsed) {
       for (const item of group.items) {
         rows.push({ kind: "item", item, indented: true })

@@ -130,8 +130,15 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [sweepingSourceId, setSweepingSourceId] = createSignal<string | null>(null)
   const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
   const displayRows = () => buildDisplayRows(queue(), collapsedGroups())
-  // Items in display order (grouped, then ungrouped) — selectedIndex indexes into this
-  const displayItems = () => displayRows().filter((r): r is DisplayRow & { kind: "item" } => r.kind === "item").map((r) => r.item)
+  // All selectable items in display order — headers with items are selectable too
+  const displayItems = (): ActivityItem[] => {
+    const result: ActivityItem[] = []
+    for (const r of displayRows()) {
+      if (r.kind === "header" && r.item) result.push(r.item)
+      else if (r.kind === "item") result.push(r.item)
+    }
+    return result
+  }
 
   // Animated spinner
   const spinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -433,10 +440,21 @@ ${sweepResult.phase ? `Phase: ${sweepResult.phase}\n` : ""}
           <For each={visibleDisplayRows()}>
             {(row) => {
               if (row.kind === "header") {
+                const headerItem = row.item
+                const headerSelected = () => {
+                  if (!headerItem) return false
+                  const idx = selectedIndex()
+                  const items = displayItems()
+                  return idx < items.length && items[idx]?.source_id === headerItem.source_id
+                }
                 return (
-                  <box height={1} flexDirection="row" paddingLeft={1}>
-                    <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
-                      {row.collapsed ? "▶ " : "▼ "}{row.label}{" ("}{row.count}{")"}</text>
+                  <box height={1} flexDirection="row" paddingLeft={1} backgroundColor={headerSelected() ? theme.backgroundElement : undefined}>
+                    <box width={2} flexShrink={0}><text fg={headerSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{headerSelected() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
+                    <text fg={headerSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>
+                      {row.label}{" ("}{row.count}{")"}</text>
+                    <Show when={headerItem}>
+                      <text fg={headerSelected() ? theme.primary : theme.textMuted}>{" · "}{formatTimestamp(headerItem!.last_event_ts)}</text>
+                    </Show>
                   </box>
                 )
               }

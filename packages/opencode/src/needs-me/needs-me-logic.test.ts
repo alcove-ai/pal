@@ -140,6 +140,7 @@ describe("buildDisplayRows", () => {
       label: "PROJ-123",
       count: 2,
       collapsed: false,
+      item: null,
     })
     expect(rows[1]).toEqual({ kind: "item", item: items[0], indented: true })
     expect(rows[2]).toEqual({ kind: "item", item: items[1], indented: true })
@@ -183,6 +184,7 @@ describe("buildDisplayRows", () => {
       label: "Milestone: v1.0",
       count: 2,
       collapsed: false,
+      item: null,
     })
     expect(rows[1]).toEqual({ kind: "item", item: items[0], indented: true })
     expect(rows[2]).toEqual({ kind: "item", item: items[1], indented: true })
@@ -213,6 +215,7 @@ describe("buildDisplayRows", () => {
       label: "PROJ-123",
       count: 1,
       collapsed: true,
+      item: null,
     })
   })
 
