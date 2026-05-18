@@ -129,12 +129,13 @@ function OnboardingGuard() {
 
   onMount(() => {
     setTimeout(async () => {
-      if (!getRole()) {
+      // Role is required — keep prompting until the user provides one
+      while (!getRole()) {
         const roleText = await DialogPrompt.show(dialog, "Welcome to PAL! What's your role on this team?", {
           placeholder: "I'm the [Role]. I [what you do on the team].",
           description: () => (
             <box flexDirection="column" gap={0}>
-              <text fg="gray">Describe your role so PAL knows what needs YOUR attention.</text>
+              <text fg="gray">PAL needs your role to know what work items need YOUR attention.</text>
               <text fg="gray">Saved to .opencode/role.md (personal, gitignored).</text>
               <text fg="gray">You can edit this later in the Settings tab (press 'e').</text>
             </box>
@@ -146,11 +147,12 @@ function OnboardingGuard() {
         }
       }
 
-      if (!loadProcessDoc()) {
+      // Process doc is required — keep prompting until one exists
+      while (!loadProcessDoc()) {
         const confirmed = await DialogConfirm.show(
           dialog,
-          "Process document missing",
-          "PAL reads your team's process from .opencode/process.md or CONTRIBUTING.md. This document describes how your team works — roles, phases, and gates. Create a starter template at .opencode/process.md?",
+          "Process document required",
+          "PAL cannot work without a team process document. It reads .opencode/process.md or CONTRIBUTING.md to understand your team's workflow — roles, phases, and gates. Create a starter template at .opencode/process.md?",
         )
         if (confirmed) {
           setProcessDoc(PROCESS_TEMPLATE)
