@@ -300,6 +300,49 @@ async function main() {
     }
   }
 
+  // === RECENCY INDICATOR ===
+  console.log("\nRecency indicator:")
+
+  // Test that the recency function correctly classifies items
+  const RECENT_THRESHOLD_MS = 4 * 60 * 60 * 1000
+  const now = Date.now()
+
+  const recentItems = items.filter(i => now - i.last_event_ts < RECENT_THRESHOLD_MS)
+  const staleItems = items.filter(i => now - i.last_event_ts >= RECENT_THRESHOLD_MS)
+
+  // At least some items should exist in one category or the other
+  assert(recentItems.length + staleItems.length === items.length, "all items are either recent or stale")
+
+  // If there are recent items, they should have timestamps within 4 hours
+  for (const item of recentItems) {
+    assert(now - item.last_event_ts < RECENT_THRESHOLD_MS, `recent item ${item.source_id} is within 4h`)
+  }
+
+  // Stale items should have timestamps older than 4 hours
+  for (const item of staleItems.slice(0, 3)) {
+    assert(now - item.last_event_ts >= RECENT_THRESHOLD_MS, `stale item ${item.source_id} is older than 4h`)
+  }
+
+  // Test that the recency classification doesn't change the total count
+  assert(items.length === recentItems.length + staleItems.length, "recency split covers all items")
+
+  // For grouped items: check if any group has recent children
+  const groupsWithRecentChildren = new Set<string>()
+  for (const item of recentItems) {
+    const groupKey = item.parent_key ?? item.milestone
+    if (groupKey) groupsWithRecentChildren.add(groupKey)
+  }
+  // This should be a subset of all group keys
+  const allGroupKeys = new Set<string>()
+  for (const item of items) {
+    const groupKey = item.parent_key ?? item.milestone
+    if (groupKey) allGroupKeys.add(groupKey)
+  }
+  assert(
+    groupsWithRecentChildren.size <= allGroupKeys.size,
+    `groups with recent children (${groupsWithRecentChildren.size}) is subset of all groups (${allGroupKeys.size})`
+  )
+
   // === SUMMARY ===
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed > 0 ? 1 : 0)

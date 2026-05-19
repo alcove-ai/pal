@@ -27,6 +27,11 @@ const OVERFLOW_THRESHOLD = 20
 const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
 const SUPPRESSION_DECAY_MS = 30 * 24 * 60 * 60 * 1000
+const RECENT_THRESHOLD_MS = 4 * 60 * 60 * 1000
+
+function isRecent(item: ActivityItem): boolean {
+  return Date.now() - item.last_event_ts < RECENT_THRESHOLD_MS
+}
 
 function formatTimestamp(ts: number): string {
   const now = Date.now(); const diff = now - ts
@@ -371,11 +376,13 @@ Help me take this action. Fetch the full issue details first.`
     return result
   }
 
+  const recentCount = () => queue().filter(isRecent).length
+
   return (
     <box width={dimensions().width} flexGrow={1} flexDirection="column">
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>Needs Me</text>
-        <text fg={theme.textMuted}>{" ("}{queue().length}{" items)"}</text>
+        <text fg={theme.textMuted}>{" ("}{queue().length}{" items"}{recentCount() > 0 ? `, ${recentCount()} recent` : ""}{")"}</text>
         <box flexGrow={1} />
         <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
         <box width={1} />
@@ -419,7 +426,8 @@ Help me take this action. Fetch the full issue details first.`
                   return idx < items.length && items[idx]?.source_id === headerItem.source_id
                 }
                 const hsel = headerSelected
-                const hfg = () => hsel() ? theme.primary : theme.text
+                const hrecent = () => headerItem ? isRecent(headerItem) : false
+                const hfg = () => hsel() ? theme.primary : hrecent() ? theme.text : theme.textMuted
                 const hmuted = () => hsel() ? theme.primary : theme.textMuted
                 const maxW = () => Math.max(dimensions().width - 30, 10)
                 return (
@@ -428,11 +436,11 @@ Help me take this action. Fetch the full issue details first.`
                       <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{hsel() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
                       <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
                       <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
-                      <box flexGrow={1}><text fg={hfg()} attributes={TextAttributes.BOLD}>{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
+                      <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{hrecent() && !hsel() ? "● " : ""}{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
                     <box height={1} flexDirection="row" paddingLeft={12}>
-                      <text fg={hmuted()} attributes={hsel() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
+                      <text fg={hmuted()} attributes={hsel() ? undefined : hrecent() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
                     </box>
                   </box>
                 )
@@ -446,17 +454,18 @@ Help me take this action. Fetch the full issue details first.`
                 return idx < items.length && items[idx]?.source_id === item.source_id
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
+              const itemIsRecent = () => isRecent(item)
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
-                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{sourceChar(item.source)} </text></box>
-                    <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : theme.text} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{hasTriage() ? "● " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
-                    <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{sourceChar(item.source)} </text></box>
+                    <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
+                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{itemIsRecent() ? "● " : ""}{hasTriage() ? "◆ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={12 + indent}>
-                    <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
+                    <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
                   </box>
                 </box>
               )
