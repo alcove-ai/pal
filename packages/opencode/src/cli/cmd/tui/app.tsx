@@ -843,7 +843,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
 
   // Automatically switch to Agent tab (tab 1) when navigating to a session
   createEffect(() => {
-    if (route.data.type === "session") {
+    // Track both type and sessionID so this fires on every session navigation,
+    // not just the first one (type stays "session" across navigations)
+    const type = route.data.type
+    const _id = route.data.type === "session" ? route.data.sessionID : undefined
+    if (type === "session") {
       setActiveTab(1)
     }
   })
