@@ -18,7 +18,7 @@ const FILES = [
 
 // Additive instruction files are always loaded alongside the primary instruction file
 // (they bypass the first-match-wins logic of FILES).
-const ADDITIVE_FILES = ["PAL_PREFERENCES.md"]
+const ADDITIVE_FILES = ["PAL_PREFERENCES.md", "role.md", "process.md", "CONTRIBUTING.md"]
 
 function extract(messages: MessageV2.WithParts[]) {
   const paths = new Set<string>()
