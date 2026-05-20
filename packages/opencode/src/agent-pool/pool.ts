@@ -39,13 +39,14 @@ let timer: ReturnType<typeof setInterval> | undefined
 /** Items waiting to be analyzed. */
 const queue: ActivityItem[] = []
 
-/** source_id -> in-flight tracking for sessions we launched. */
+/** source_id -> in-flight tracking for all active sessions. */
 const running = new Map<
   string,
   {
     sessionId: string
     item: ActivityItem
     startedAt: number
+    userInitiated: boolean
   }
 >()
 
@@ -210,7 +211,7 @@ async function launchSession(item: ActivityItem): Promise<void> {
     log.info("session created for analysis", { sourceId: item.source_id, sessionId })
 
     const now = Date.now()
-    running.set(item.source_id, { sessionId, item, startedAt: now })
+    running.set(item.source_id, { sessionId, item, startedAt: now, userInitiated: false })
 
     const result: AgentResult = {
       sourceId: item.source_id,
@@ -284,7 +285,14 @@ async function checkRunning(): Promise<void> {
       log.info("session completed", { sourceId, sessionId: info.sessionId, statusType })
     }
 
-    // Session is idle — the prompt finished. Read messages.
+    // User-initiated sessions: just remove from running when idle
+    if (info.userInitiated) {
+      running.delete(sourceId)
+      log.info("user session went idle", { sourceId, sessionId: info.sessionId })
+      continue
+    }
+
+    // Background analysis session idle — read messages and extract result.
     try {
       const msgRes = await api.client.session.messages({
         sessionID: info.sessionId,
@@ -297,7 +305,6 @@ async function checkRunning(): Promise<void> {
         continue
       }
 
-      // Collect ALL text from ALL assistant messages, then find SUMMARY
       let allText = ""
       let lastText = ""
       for (const msg of messages) {
@@ -315,7 +322,6 @@ async function checkRunning(): Promise<void> {
         }
       }
 
-      // Prefer the text containing SUMMARY:, fall back to last text, fall back to all text
       let responseText = ""
       if (allText.toUpperCase().includes("SUMMARY:")) {
         responseText = allText
@@ -441,6 +447,12 @@ export function queueAnalysis(item: ActivityItem): void {
   queue.push(item)
   queued.add(item.source_id)
   log.info("queued analysis", { sourceId: item.source_id, title: item.title.slice(0, 60) })
+}
+
+export function registerSession(item: ActivityItem, sessionId: string): void {
+  if (running.has(item.source_id)) return
+  running.set(item.source_id, { sessionId, item, startedAt: Date.now(), userInitiated: true })
+  log.info("registered user session", { sourceId: item.source_id, sessionId })
 }
 
 export function forceRequeue(item: ActivityItem): void {

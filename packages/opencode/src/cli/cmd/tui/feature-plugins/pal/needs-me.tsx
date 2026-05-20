@@ -23,7 +23,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
-import { init as initPool, queueAnalysis, forceRequeue, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
+import { init as initPool, queueAnalysis, forceRequeue, registerSession, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -202,9 +202,6 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   })
   onCleanup(() => { if (spinnerTimer) clearInterval(spinnerTimer) })
 
-  // Track triage sessions: source_id -> sessionID
-  const triageSessionMap = new Map<string, string>()
-
   function refresh() {
     const items = computeFilteredQueue(); setQueue(items); setLastChecked(Date.now())
     if (items.length > 0) setHasEverLoaded(true)
@@ -263,40 +260,32 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   void handleSnooze
 
   async function launchTriageSession(item: ActivityItem) {
-    // Check pool for existing session
+    // Check pool for existing session (running or completed)
     const poolResult = getResult(item.source_id)
     if (poolResult?.sessionId) {
-      // Navigate to existing background session
-      triageSessionMap.set(item.source_id, poolResult.sessionId)
+      registerSession(item, poolResult.sessionId)
       props.api.route.navigate("session", { sessionID: poolResult.sessionId })
       return
     }
 
-    // Check triage session map (for sessions user already opened)
-    const existingSessionID = triageSessionMap.get(item.source_id)
-    if (existingSessionID) {
-      props.api.route.navigate("session", { sessionID: existingSessionID })
-      return
-    }
-
-    // No existing session — create new one (fallback, should be rare)
+    // No existing session — create one, register with pool, navigate
     const result = await props.api.client.session.create({
       title: `Triage: ${item.title.slice(0, 50)}`,
     })
     if (!result.data?.id) return
 
     const sessionID = result.data.id
-    triageSessionMap.set(item.source_id, sessionID)
-
-    // Navigate immediately — user sees the session right away
+    registerSession(item, sessionID)
     props.api.route.navigate("session", { sessionID })
 
-    // Load process doc and role for context
     const processDoc = loadProcessDoc() ?? "No process document configured."
     const role = getRole() ?? "No role configured."
 
-    // Build context message
-    const contextText = `Process context from your team's process document:
+    void props.api.client.session.prompt({
+      sessionID,
+      parts: [{
+        type: "text" as const,
+        text: `Process context from your team's process document:
 ${processDoc}
 
 Your role: ${role}
@@ -304,14 +293,7 @@ Your role: ${role}
 Issue: ${item.title}
 URL: ${item.url ?? "none"}
 
-Help me take this action. Fetch the full issue details first.`
-
-    // Fire prompt in background (don't await)
-    void props.api.client.session.prompt({
-      sessionID,
-      parts: [{
-        type: "text" as const,
-        text: contextText,
+Help me take this action. Fetch the full issue details first.`,
       }],
     })
   }
@@ -655,7 +637,7 @@ Help me take this action. Fetch the full issue details first.`
                 const items = displayItems()
                 return idx < items.length && items[idx]?.source_id === item.source_id
               }
-              const hasTriage = () => triageSessionMap.has(item.source_id)
+              const hasTriage = () => isRunning(item.source_id)
               const itemIsRecent = () => isRecent(item)
               const itemResult = () => getResult(item.source_id)
               const itemAnalyzed = () => itemResult()?.status === "done"
