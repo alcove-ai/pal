@@ -695,6 +695,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     {
       title: "Exit the app",
       value: "app.exit",
+      keybind: "app_exit",
       slash: {
         name: "exit",
         aliases: ["quit", "q"],

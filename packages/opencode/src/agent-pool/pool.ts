@@ -107,27 +107,35 @@ Steps:
 
 CRITICAL: Do NOT ask "shall I post this?" or "would you like me to...?" — just write your analysis and stop. The user will review your analysis later and decide what to do.
 
-End your response with exactly this format on its own line:
-SUMMARY: <one sentence recommendation>`
+End your response with exactly these two lines:
+STATE: <one sentence describing the current state of this item>
+ACTION: <one sentence recommending what the user should do next>`
 }
 
 function extractSummary(text: string): { summary: string; recommendedAction: string | null } {
-  const lines = text.split("\n").filter((l) => l.trim().length > 0)
+  const lines = text.split("\n")
 
-  // Look for explicit SUMMARY: line
+  // Look for STATE: and ACTION: lines
+  const stateLine = lines.find((l) => l.trim().toUpperCase().startsWith("STATE:"))
+  const actionLine = lines.find((l) => l.trim().toUpperCase().startsWith("ACTION:"))
+
+  if (stateLine || actionLine) {
+    const summary = stateLine ? stateLine.replace(/^STATE:\s*/i, "").trim() : ""
+    const action = actionLine ? actionLine.replace(/^ACTION:\s*/i, "").trim() : null
+    return { summary: summary || action || text.slice(0, 200), recommendedAction: action }
+  }
+
+  // Fallback: look for SUMMARY: (old format)
   const summaryLine = lines.find((l) => l.trim().toUpperCase().startsWith("SUMMARY:"))
   if (summaryLine) {
     const summary = summaryLine.replace(/^SUMMARY:\s*/i, "").trim()
-    const idx = lines.indexOf(summaryLine)
-    const rest = lines.slice(0, idx).join("\n").trim()
-    return { summary, recommendedAction: rest || null }
+    return { summary, recommendedAction: null }
   }
 
-  // No SUMMARY: line — use the last non-empty line as summary, rest as action
-  if (lines.length > 0) {
-    const summary = lines[lines.length - 1].replace(/^\*\*|\*\*$/g, "").trim().slice(0, 200)
-    const rest = lines.slice(0, -1).join("\n").trim()
-    return { summary, recommendedAction: rest || null }
+  // Last resort: use the last non-empty line
+  const nonEmpty = lines.filter((l) => l.trim().length > 0)
+  if (nonEmpty.length > 0) {
+    return { summary: nonEmpty[nonEmpty.length - 1].replace(/^\*\*|\*\*$/g, "").trim().slice(0, 200), recommendedAction: null }
   }
 
   return { summary: text.slice(0, 200), recommendedAction: null }

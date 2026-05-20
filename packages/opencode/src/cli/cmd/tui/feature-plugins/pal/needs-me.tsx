@@ -482,7 +482,7 @@ Help me take this action. Fetch the full issue details first.`
                         if (headerItem) {
                           const result = getResult(headerItem.source_id)
                           if (result?.status === "done" && result.summary) {
-                            return <text fg={hsel() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
+                            return <text fg={hsel() ? theme.primary : theme.success}>{"✓ "}{result.summary}{result.recommendedAction ? ` → ${result.recommendedAction}` : ""}</text>
                           }
                           if (result?.status === "running") {
                             return <text fg={hsel() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(headerItem.source_id))}{")..."}</text>
@@ -528,7 +528,7 @@ Help me take this action. Fetch the full issue details first.`
                     {(() => {
                       const result = getResult(item.source_id)
                       if (result?.status === "done" && result.summary) {
-                        return <text fg={isSelected() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
+                        return <text fg={isSelected() ? theme.primary : theme.success}>{"✓ "}{result.summary}{result.recommendedAction ? ` → ${result.recommendedAction}` : ""}</text>
                       }
                       if (result?.status === "running") {
                         return <text fg={isSelected() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(item.source_id))}{")..."}</text>
