@@ -288,6 +288,21 @@ async function checkRunning(): Promise<void> {
     // User-initiated sessions: just remove from running when idle
     if (info.userInitiated) {
       running.delete(sourceId)
+      const existing = results.get(sourceId)
+      if (existing) {
+        existing.sessionId = info.sessionId
+      } else {
+        results.set(sourceId, {
+          sourceId,
+          sessionId: info.sessionId,
+          summary: "Session available — press Enter to resume",
+          recommendedAction: null,
+          urgency: 5,
+          status: "done",
+          analyzedEventTs: info.item.last_event_ts,
+          analyzedAt: Date.now(),
+        })
+      }
       log.info("user session went idle", { sourceId, sessionId: info.sessionId })
       continue
     }
