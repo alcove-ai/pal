@@ -295,6 +295,7 @@ async function checkRunning(): Promise<void> {
         responseText = "Analysis complete — review session for details"
       }
 
+      log.info("raw response text", { sourceId, length: responseText.length, first200: responseText.slice(0, 200), last200: responseText.slice(-200) })
       const { summary, recommendedAction } = extractSummary(responseText)
       const now = Date.now()
       const result: AgentResult = {
