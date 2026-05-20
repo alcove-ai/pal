@@ -190,17 +190,18 @@ async function launchSession(item: ActivityItem): Promise<void> {
     results.set(item.source_id, result)
     persistResult(result)
 
-    // Fire the prompt — don't await. The processing loop will poll for completion.
-    void api.client.session
-      .prompt({
+    // Fire the prompt async — returns immediately, LLM processes in background
+    try {
+      await api.client.session.promptAsync({
         sessionID: sessionId,
-        parts: [{ type: "text", text: buildPrompt(item) }],
+        parts: [{ type: "text" as const, text: buildPrompt(item) }],
       })
-      .catch((err) => {
-        log.error("prompt failed", { sourceId: item.source_id, sessionId, error: err })
-        markError(item, sessionId)
-        running.delete(item.source_id)
-      })
+      log.info("prompt fired async", { sourceId: item.source_id, sessionId })
+    } catch (err) {
+      log.error("promptAsync failed", { sourceId: item.source_id, sessionId, error: err })
+      markError(item, sessionId)
+      running.delete(item.source_id)
+    }
   } catch (err) {
     log.error("failed to create analysis session", { sourceId: item.source_id, error: err })
     markError(item, null)
@@ -226,18 +227,24 @@ async function checkRunning(): Promise<void> {
   if (!api || running.size === 0) return
 
   // Batch-check statuses for all running sessions
-  let statuses: Record<string, { type: string }> | undefined
+  let statuses: Record<string, any> | undefined
   try {
     const res = await api.client.session.status()
-    statuses = res.data as Record<string, { type: string }> | undefined
-  } catch {
-    return // will retry next tick
+    statuses = res.data as Record<string, any> | undefined
+  } catch (err) {
+    log.info("session.status() failed", { error: err })
+    return
   }
-  if (!statuses) return
+  if (!statuses) {
+    log.info("session.status() returned no data")
+    return
+  }
 
   for (const [sourceId, info] of running) {
     const st = statuses[info.sessionId]
-    if (!st || st.type !== "idle") continue
+    // Status might be { type: "idle" } or { status: "idle" } or just a string
+    const statusType = st?.type ?? st?.status ?? (typeof st === "string" ? st : null)
+    if (!statusType || (statusType !== "idle" && statusType !== "complete")) continue
 
     // Session is idle — the prompt finished. Read messages.
     try {
@@ -326,6 +333,9 @@ async function evictOldest(): Promise<void> {
 async function tick(): Promise<void> {
   try {
     // 1. Check running sessions for completion
+    if (running.size > 0) {
+      log.info("tick: checking running sessions", { running: running.size, queued: queue.length })
+    }
     await checkRunning()
 
     // 2. Launch new sessions from queue
