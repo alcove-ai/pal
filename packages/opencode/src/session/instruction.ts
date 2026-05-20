@@ -141,6 +141,14 @@ export const layer: Layer.Layer<
             paths.add(path.resolve(dotOpencodePath))
           }
         }
+        // Named role file: .opencode/roles/{PAL_NAME}.md
+        const palName = process.env.PAL_NAME
+        if (palName) {
+          const namedRolePath = path.join(ctx.worktree, ".opencode", "roles", `${palName}.md`)
+          if (yield* fs.existsSafe(namedRolePath)) {
+            paths.add(path.resolve(namedRolePath))
+          }
+        }
       }
 
       if (config.instructions) {

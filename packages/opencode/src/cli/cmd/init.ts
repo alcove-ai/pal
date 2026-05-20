@@ -133,8 +133,8 @@ export const InitCommand = cmd({
     if (isCancel(scriptPath)) abort()
     const resolvedScriptPath = path.resolve(scriptPath.trim() || defaultScriptPath)
 
-    // Check if role.md already exists
-    const rolePath = path.join(resolvedConfigDir, ".opencode", "role.md")
+    // Write role to .opencode/roles/{name}.md
+    const rolePath = path.join(resolvedConfigDir, ".opencode", "roles", `${name.trim()}.md`)
     if (fs.existsSync(rolePath)) {
       const overwriteRole = await p.confirm({
         message: `${rolePath} already exists. Overwrite?`,

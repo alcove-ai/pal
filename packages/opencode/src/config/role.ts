@@ -8,6 +8,11 @@ let cached: string | null | undefined
 let watcher: fsNode.FSWatcher | undefined
 
 function rolePath(): string {
+  const palName = process.env.PAL_NAME
+  if (palName) {
+    const named = path.join(process.cwd(), ".opencode", "roles", `${palName}.md`)
+    if (fsNode.existsSync(named)) return named
+  }
   return path.join(process.cwd(), ".opencode", "role.md")
 }
 
@@ -45,7 +50,10 @@ export function get(): string | null {
 }
 
 export function set(content: string): void {
-  const p = rolePath()
+  const palName = process.env.PAL_NAME
+  const p = palName
+    ? path.join(process.cwd(), ".opencode", "roles", `${palName}.md`)
+    : path.join(process.cwd(), ".opencode", "role.md")
   const dir = path.dirname(p)
   try {
     if (!fsNode.existsSync(dir)) fsNode.mkdirSync(dir, { recursive: true })
