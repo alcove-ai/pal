@@ -52,8 +52,9 @@ pal init
 
 The wizard prompts for:
 - **Agent name** (e.g. `percy`) -- used as the command name and shown in terminal tab titles
+- **Your role** -- written to `.opencode/roles/percy.md`
 - **Jira** credentials (base URL, email, API token) -- optional
-- **GitLab** credentials (URL, API token, project ID) -- optional
+- **GitLab** credentials (URL, API token) -- optional
 
 It writes a wrapper script to `~/.local/bin/<name>`. After that, just run your agent by name:
 
@@ -61,9 +62,24 @@ It writes a wrapper script to `~/.local/bin/<name>`. After that, just run your a
 percy
 ```
 
-The wrapper exports the configured env vars and launches `pal` from your config directory. Your terminal tab title updates to show the agent name.
+The wrapper exports `PAL_NAME=percy` and your credentials, then launches `pal` from your config directory. Your terminal tab title shows the agent name.
 
-**Re-running `pal init`** overwrites the existing wrapper, so you can update credentials any time.
+### Per-agent roles
+
+Each named agent gets its own role file at `.opencode/roles/{name}.md`. Multiple agents can share the same config directory with different roles:
+
+```
+.opencode/
+  roles/
+    percy.md      # "I'm the PO, I prioritize work..."
+    ops-bot.md    # "I'm the SRE, I monitor deployments..."
+  pal.json        # shared data sources
+  process.md      # shared team process
+```
+
+When `PAL_NAME` is set, PAL loads `.opencode/roles/{name}.md`. Without it, PAL falls back to `.opencode/role.md`. The `roles/` directory is gitignored by default.
+
+**Re-running `pal init`** overwrites the existing wrapper and role file.
 
 ## Tabs
 
@@ -158,7 +174,7 @@ One person creates `.opencode/pal.json` and `.opencode/process.md`. These are co
 
 ### 2. Personal role files (gitignored)
 
-Each team member creates `.opencode/role.md`. This determines what the Needs Me panel shows them. The same panel shows different items to each person:
+Each team member runs `pal init` to create a named agent with a personal role file. Or create `.opencode/role.md` manually. The role determines what the Needs Me panel shows each person:
 
 **Product Owner:**
 ```
@@ -178,18 +194,23 @@ I'm a developer on the backend team. I implement features, fix bugs,
 and review pull requests assigned to me.
 ```
 
-### 3. Gitignore role.md
+### 3. Gitignore personal files
 
 ```
 # .gitignore
 .opencode/role.md
+.opencode/roles/
+.opencode/data.db
+.opencode/data.db-wal
+.opencode/data.db-shm
 ```
 
 ## Configuration
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| `.opencode/role.md` | No (gitignored) | Your role on the team |
+| `.opencode/role.md` | No (gitignored) | Default role (used when PAL_NAME is not set) |
+| `.opencode/roles/` | No (gitignored) | Per-agent role files (`roles/percy.md`, etc.) |
 | `.opencode/process.md` | Yes | Team workflow, phases, and gates |
 | `.opencode/pal.json` | Yes | Issue tracker connections (Jira, GitHub, GitLab) |
 | `.opencode/domains.json` | Yes | Domain health definitions (copy from `domains.example.json`) |
