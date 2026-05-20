@@ -172,18 +172,17 @@ and review pull requests assigned to me.
 
 ## Database Reset
 
-PAL stores data in SQLite at `~/.local/share/opencode/`. Each project gets its own `.db` file (named by a hash of the project directory path).
+PAL stores data in `.opencode/data.db` in your project directory, right next to your config files. This file is gitignored.
 
 **To reset:**
 ```bash
-rm ~/.local/share/opencode/*.db
+rm .opencode/data.db
 ```
 
-PAL recreates databases on next launch. The first poll cycle (~90 seconds) repopulates everything.
+PAL recreates the database on next launch. The first poll cycle (~90 seconds) repopulates everything. Existing databases from older PAL versions (`~/.local/share/opencode/*.db`) are automatically migrated on first run.
 
 **When to reset:**
 - Stale data after changing repos in `pal.json`
-- Switching what a project directory points to
 - Clearing all dismissed items and cached analysis results
 
 ## Development

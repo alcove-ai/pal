@@ -9,7 +9,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import { NamedError } from "@opencode-ai/core/util/error"
 import z from "zod"
 import path from "path"
-import { readFileSync, readdirSync, existsSync } from "fs"
+import { readFileSync, readdirSync, existsSync, renameSync, mkdirSync } from "fs"
 import { createHash } from "crypto"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { InstallationChannel } from "@opencode-ai/core/installation/version"
@@ -28,16 +28,27 @@ export const NotFoundError = NamedError.create(
 
 const log = Log.create({ service: "db" })
 
-function projectHash(): string {
-  return createHash("sha256").update(process.cwd()).digest("hex").slice(0, 12)
+export function getChannelPath() {
+  const dir = path.join(process.cwd(), ".opencode")
+  if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
+    return path.join(dir, "data.db")
+  const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
+  return path.join(dir, `data-${safe}.db`)
 }
 
-export function getChannelPath() {
-  const hash = projectHash()
-  if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
-    return path.join(Global.Path.data, `opencode-${hash}.db`)
-  const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
-  return path.join(Global.Path.data, `opencode-${safe}-${hash}.db`)
+function migrateFromLegacyPath(newPath: string): void {
+  if (existsSync(newPath)) return
+  const hash = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 12)
+  const legacyPath = path.join(Global.Path.data, `opencode-${hash}.db`)
+  if (!existsSync(legacyPath)) return
+  const dir = path.dirname(newPath)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const src = legacyPath + suffix
+    const dst = newPath + suffix
+    if (existsSync(src)) renameSync(src, dst)
+  }
+  log.info("migrated database from legacy path", { from: legacyPath, to: newPath })
 }
 
 export const Path = iife(() => {
@@ -96,6 +107,8 @@ function migrations(dir: string): Journal {
 
 export const Client = lazy(() => {
   log.info("opening database", { path: Path })
+
+  if (Path !== ":memory:") migrateFromLegacyPath(Path)
 
   const db = init(Path)
 
