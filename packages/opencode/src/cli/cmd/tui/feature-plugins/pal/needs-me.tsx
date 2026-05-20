@@ -23,7 +23,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
-import { init as initPool, queueAnalysis, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
+import { init as initPool, queueAnalysis, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -305,7 +305,23 @@ Help me take this action. Fetch the full issue details first.`
     // Don't handle keys when a dialog is open
     if (props.api.ui.dialog.open) return
     if (evt.defaultPrevented) return
-    if (evt.ctrl || evt.meta || evt.shift) return
+    if (evt.ctrl || evt.meta) return
+
+    // Shift+= (+) / Shift+- (_): scale worker pool
+    if (evt.shift) {
+      const name = evt.name ?? ""
+      if (name === "=" || name === "+") {
+        evt.preventDefault()
+        setMaxConcurrent(getMaxConcurrent() + 1)
+        return
+      }
+      if (name === "-" || name === "_") {
+        evt.preventDefault()
+        setMaxConcurrent(getMaxConcurrent() - 1)
+        return
+      }
+      return
+    }
 
     const items = displayItems()
     if (items.length === 0) return
@@ -640,7 +656,8 @@ Help me take this action. Fetch the full issue details first.`
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"c collapse all  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand"}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"+/- workers"}</text>
         </box>
       </Show>
     </box>

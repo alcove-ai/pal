@@ -9,7 +9,9 @@ import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 const log = Log.create({ service: "agent-pool" })
 
-const MAX_CONCURRENT = 10
+const MIN_CONCURRENT = 1
+const MAX_CONCURRENT_CEILING = 20
+let maxConcurrent = 10
 const POLL_INTERVAL_MS = 2_000
 
 // ---------------------------------------------------------------------------
@@ -388,7 +390,7 @@ async function tick(): Promise<void> {
     await checkRunning()
 
     // 2. Launch new sessions from queue
-    const slotsAvailable = MAX_CONCURRENT - running.size
+    const slotsAvailable = maxConcurrent - running.size
     const toLaunch = Math.min(slotsAvailable, queue.length)
 
     for (let i = 0; i < toLaunch; i++) {
@@ -397,7 +399,7 @@ async function tick(): Promise<void> {
       queued.delete(item.source_id)
 
       // If pool is full, evict oldest completed session
-      if (running.size >= MAX_CONCURRENT) {
+      if (running.size >= maxConcurrent) {
         await evictOldest()
       }
 
@@ -423,7 +425,7 @@ export function init(pluginApi: TuiPluginApi): void {
     void tick()
   }, POLL_INTERVAL_MS)
 
-  log.info("agent pool initialized", { pollInterval: POLL_INTERVAL_MS, maxConcurrent: MAX_CONCURRENT })
+  log.info("agent pool initialized", { pollInterval: POLL_INTERVAL_MS, maxConcurrent: maxConcurrent })
 }
 
 export function queueAnalysis(item: ActivityItem): void {
@@ -480,7 +482,13 @@ export function getElapsedMs(sourceId: string): number | null {
 }
 
 export function getMaxConcurrent(): number {
-  return MAX_CONCURRENT
+  return maxConcurrent
+}
+
+export function setMaxConcurrent(n: number): number {
+  maxConcurrent = Math.max(MIN_CONCURRENT, Math.min(MAX_CONCURRENT_CEILING, n))
+  log.info("max concurrent updated", { maxConcurrent, running: running.size })
+  return maxConcurrent
 }
 
 export function stop(): void {
