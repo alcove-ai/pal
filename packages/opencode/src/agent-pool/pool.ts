@@ -86,7 +86,7 @@ function buildPrompt(item: ActivityItem): string {
   const role = getRole() ?? "(no role configured)"
   const ts = new Date(item.last_event_ts).toISOString()
 
-  return `You are a process facilitator for the user's team. Analyze this work item.
+  return `You are a process facilitator for the user's team.
 
 === TEAM PROCESS ===
 ${processDoc}
@@ -98,15 +98,18 @@ ${role}
 Title: ${item.title}
 URL: ${item.url ?? "(none)"}
 Source: ${item.source_id}
-Latest activity: ${ts}
-Event: ${item.event_type}: ${item.summary ?? ""}
 
-Based on the team's process and the user's role:
-1. What is the current state of this item?
-2. What specific action should the user take next?
+IMPORTANT: Before answering, you MUST first fetch the full details of this work item. Use your tools to:
+- Fetch the issue/PR from GitHub (read the full description, comments, labels, milestone, assignees)
+- Read any linked issues or PRs referenced in the description
+- Check the current status and recent activity
+
+Only AFTER you have fetched and read the actual data, answer these questions:
+1. What is the current state of this item in the team's process?
+2. What specific action should the user take next given their role?
 3. Prepare a draft of that action if possible (e.g., a comment, a spec outline).
 
-Be concise. Start your response with a one-line summary prefixed with "SUMMARY:" that will be shown inline in the dashboard.`
+End your response with a single line: SUMMARY: <one sentence recommendation for the dashboard>`
 }
 
 function extractSummary(text: string): { summary: string; recommendedAction: string | null } {
