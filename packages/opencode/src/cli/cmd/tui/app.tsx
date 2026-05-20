@@ -141,8 +141,9 @@ export function tui(input: {
     void renderer.getPalette({ size: 16 }).catch(() => undefined)
     const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
 
-    const dirName = path.basename(process.cwd())
-    process.stdout.write(`\x1b]0;PAL — ${dirName}\x07`)
+    const palName = process.env.PAL_NAME
+    const titleLabel = palName || path.basename(process.cwd())
+    process.stdout.write(`\x1b]0;${palName ? palName : `PAL — ${titleLabel}`}\x07`)
 
     await render(() => {
       return (

@@ -1,0 +1,213 @@
+import * as p from "@clack/prompts"
+import { cmd } from "./cmd"
+import fs from "fs"
+import path from "path"
+import os from "os"
+
+function isCancel(value: unknown): value is symbol {
+  return p.isCancel(value)
+}
+
+function abort(): never {
+  p.cancel("Setup cancelled.")
+  process.exit(0)
+}
+
+export const InitCommand = cmd({
+  command: "init",
+  describe: "generate a named wrapper script for launching PAL with credentials",
+  builder: (yargs) => yargs,
+  handler: async () => {
+    p.intro("PAL init")
+
+    // 1. Name
+    const name = await p.text({
+      message: "What should this PAL be called?",
+      placeholder: "e.g. percy, pulp-ops",
+      validate: (v) => {
+        if (!v || !v.trim()) return "Name is required"
+        if (/[^a-zA-Z0-9._-]/.test(v.trim())) return "Name must only contain letters, digits, dots, dashes, or underscores"
+      },
+    })
+    if (isCancel(name)) abort()
+
+    // 2. Role
+    const role = await p.text({
+      message: "Your role on the team?",
+      placeholder: "e.g. backend engineer, SRE, team lead",
+      validate: (v) => {
+        if (!v || !v.trim()) return "Role is required"
+      },
+    })
+    if (isCancel(role)) abort()
+
+    // 3. Jira
+    let jiraUrl: string | undefined
+    let jiraUsername: string | undefined
+    let jiraToken: string | undefined
+
+    const connectJira = await p.confirm({
+      message: "Connect Jira?",
+    })
+    if (isCancel(connectJira)) abort()
+
+    if (connectJira) {
+      const url = await p.text({
+        message: "JIRA_URL",
+        placeholder: "https://issues.example.com",
+        validate: (v) => {
+          if (!v || !v.trim()) return "URL is required"
+        },
+      })
+      if (isCancel(url)) abort()
+
+      const username = await p.text({
+        message: "JIRA_USERNAME",
+        placeholder: "you@example.com",
+        validate: (v) => {
+          if (!v || !v.trim()) return "Username is required"
+        },
+      })
+      if (isCancel(username)) abort()
+
+      const token = await p.password({
+        message: "JIRA_API_TOKEN",
+        validate: (v) => {
+          if (!v || !v.trim()) return "Token is required"
+        },
+      })
+      if (isCancel(token)) abort()
+
+      jiraUrl = url.trim()
+      jiraUsername = username.trim()
+      jiraToken = token.trim()
+    }
+
+    // 4. GitLab
+    let gitlabUrl: string | undefined
+    let gitlabToken: string | undefined
+
+    const connectGitlab = await p.confirm({
+      message: "Connect GitLab?",
+    })
+    if (isCancel(connectGitlab)) abort()
+
+    if (connectGitlab) {
+      const url = await p.text({
+        message: "GITLAB_URL",
+        placeholder: "https://gitlab.example.com",
+        validate: (v) => {
+          if (!v || !v.trim()) return "URL is required"
+        },
+      })
+      if (isCancel(url)) abort()
+
+      const token = await p.password({
+        message: "GITLAB_ACCESS_TOKEN",
+        validate: (v) => {
+          if (!v || !v.trim()) return "Token is required"
+        },
+      })
+      if (isCancel(token)) abort()
+
+      gitlabUrl = url.trim()
+      gitlabToken = token.trim()
+    }
+
+    // 5. Config directory
+    const configDir = await p.text({
+      message: "Config directory? (where pal.json lives)",
+      defaultValue: process.cwd(),
+      placeholder: process.cwd(),
+    })
+    if (isCancel(configDir)) abort()
+    const resolvedConfigDir = path.resolve(configDir.trim() || process.cwd())
+
+    // 6. Script output path
+    const defaultScriptPath = path.join(os.homedir(), ".local", "bin", name.trim())
+    const scriptPath = await p.text({
+      message: "Where to save the launch script?",
+      defaultValue: defaultScriptPath,
+      placeholder: defaultScriptPath,
+    })
+    if (isCancel(scriptPath)) abort()
+    const resolvedScriptPath = path.resolve(scriptPath.trim() || defaultScriptPath)
+
+    // Check if role.md already exists
+    const rolePath = path.join(resolvedConfigDir, ".opencode", "role.md")
+    if (fs.existsSync(rolePath)) {
+      const overwriteRole = await p.confirm({
+        message: `${rolePath} already exists. Overwrite?`,
+      })
+      if (isCancel(overwriteRole)) abort()
+      if (!overwriteRole) {
+        p.log.info("Keeping existing role.md")
+      } else {
+        writeRole(rolePath, role.trim())
+      }
+    } else {
+      writeRole(rolePath, role.trim())
+    }
+
+    // Check if script already exists
+    if (fs.existsSync(resolvedScriptPath)) {
+      const overwriteScript = await p.confirm({
+        message: `${resolvedScriptPath} already exists. Overwrite?`,
+      })
+      if (isCancel(overwriteScript)) abort()
+      if (!overwriteScript) {
+        p.cancel("Aborted — not overwriting existing script.")
+        process.exit(0)
+      }
+    }
+
+    // Build the wrapper script
+    const lines: string[] = [
+      "#!/bin/bash",
+      `# PAL agent: ${name.trim()}`,
+      "# Generated by: pal init",
+      "",
+    ]
+
+    if (jiraUrl) lines.push(`export JIRA_URL=${quote(jiraUrl)}`)
+    if (jiraUsername) lines.push(`export JIRA_USERNAME=${quote(jiraUsername)}`)
+    if (jiraToken) lines.push(`export JIRA_API_TOKEN=${quote(jiraToken)}`)
+    if (gitlabUrl) lines.push(`export GITLAB_URL=${quote(gitlabUrl)}`)
+    if (gitlabToken) lines.push(`export GITLAB_ACCESS_TOKEN=${quote(gitlabToken)}`)
+
+    lines.push(`export PAL_NAME=${quote(name.trim())}`)
+    lines.push("")
+    lines.push(`cd ${quote(resolvedConfigDir)} && exec pal "$@"`)
+    lines.push("")
+
+    const scriptContent = lines.join("\n")
+
+    // Create parent directories if needed
+    const scriptDir = path.dirname(resolvedScriptPath)
+    fs.mkdirSync(scriptDir, { recursive: true })
+
+    // Write the script
+    fs.writeFileSync(resolvedScriptPath, scriptContent, { mode: 0o755 })
+
+    // Success
+    p.log.success(`Launch script written to ${resolvedScriptPath}`)
+
+    if (jiraToken || gitlabToken) {
+      p.log.warn("The script contains plaintext API tokens. Protect it accordingly (e.g. chmod 700).")
+    }
+
+    p.log.info(`Run it with: ${resolvedScriptPath}`)
+    p.outro("Done!")
+  },
+})
+
+/** Shell-quote a value using single quotes. */
+function quote(value: string): string {
+  return "'" + value.replace(/'/g, "'\\''") + "'"
+}
+
+/** Write role.md, creating parent directories as needed. */
+function writeRole(rolePath: string, role: string) {
+  fs.mkdirSync(path.dirname(rolePath), { recursive: true })
+  fs.writeFileSync(rolePath, role + "\n")
+}

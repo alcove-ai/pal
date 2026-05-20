@@ -453,14 +453,15 @@ Help me take this action. Fetch the full issue details first.`
     }
 
     // Collect rows that fit in available height
-    // Row height is 3 if item has analysis with recommendedAction, otherwise 2
+    // Row height: 2-3 content lines + 1 blank separator
     const result: DisplayRow[] = []
     let usedRows = 0
     for (let i = startIdx; i < rows.length; i++) {
       const r = rows[i]
       const itemForRow = r.kind === "header" ? r.item : r.kind === "item" ? r.item : null
       const res = itemForRow ? getResult(itemForRow.source_id) : null
-      const rowHeight = res?.status === "done" && res.recommendedAction ? 3 : 2
+      const contentHeight = res?.status === "done" && res.recommendedAction ? 3 : 2
+      const rowHeight = contentHeight + 1 // +1 for blank separator
       if (usedRows + rowHeight > maxRows) break
       result.push(r)
       usedRows += rowHeight
@@ -586,6 +587,7 @@ Help me take this action. Fetch the full issue details first.`
                         <text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.DIM}>{truncate(`→ ${hResult()!.recommendedAction!}`)}</text>
                       </box>
                     </Show>
+                    <box height={1} />
                   </box>
                 )
               }
@@ -645,6 +647,7 @@ Help me take this action. Fetch the full issue details first.`
                       <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.DIM}>{truncate(`→ ${itemResult()!.recommendedAction!}`, indent)}</text>
                     </box>
                   </Show>
+                  <box height={1} />
                 </box>
               )
             }}

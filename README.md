@@ -40,6 +40,31 @@ Built on [opencode](https://github.com/anomalyco/opencode).
 
 6. Navigate to the **Needs Me** tab with `Shift+Right`. You should see items from your repo. Use `pal --upgrade` to check for updates.
 
+## Named Agents (`pal init`)
+
+The Quick Start above works out of the box for GitHub-only users -- no extra setup needed.
+
+If your team uses **Jira or GitLab**, those integrations need API tokens passed as environment variables. Rather than exporting them in every shell, `pal init` generates a named wrapper script that bakes in your credentials:
+
+```bash
+pal init
+```
+
+The wizard prompts for:
+- **Agent name** (e.g. `percy`) -- used as the command name and shown in terminal tab titles
+- **Jira** credentials (base URL, email, API token) -- optional
+- **GitLab** credentials (URL, API token, project ID) -- optional
+
+It writes a wrapper script to `~/.local/bin/<name>`. After that, just run your agent by name:
+
+```bash
+percy
+```
+
+The wrapper exports the configured env vars and launches `pal` from your config directory. Your terminal tab title updates to show the agent name.
+
+**Re-running `pal init`** overwrites the existing wrapper, so you can update credentials any time.
+
 ## Tabs
 
 Navigate between tabs with `Shift+Left` / `Shift+Right`.
