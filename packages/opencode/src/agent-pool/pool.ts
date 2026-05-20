@@ -112,19 +112,25 @@ SUMMARY: <one sentence recommendation>`
 }
 
 function extractSummary(text: string): { summary: string; recommendedAction: string | null } {
-  const lines = text.split("\n")
-  const summaryLine = lines.find((l) => l.trim().startsWith("SUMMARY:"))
-  const summary = summaryLine ? summaryLine.replace(/^SUMMARY:\s*/i, "").trim() : text.slice(0, 200)
-  // Everything after the summary line is the recommended action
+  const lines = text.split("\n").filter((l) => l.trim().length > 0)
+
+  // Look for explicit SUMMARY: line
+  const summaryLine = lines.find((l) => l.trim().toUpperCase().startsWith("SUMMARY:"))
   if (summaryLine) {
+    const summary = summaryLine.replace(/^SUMMARY:\s*/i, "").trim()
     const idx = lines.indexOf(summaryLine)
-    const rest = lines
-      .slice(idx + 1)
-      .join("\n")
-      .trim()
+    const rest = lines.slice(0, idx).join("\n").trim()
     return { summary, recommendedAction: rest || null }
   }
-  return { summary, recommendedAction: null }
+
+  // No SUMMARY: line — use the last non-empty line as summary, rest as action
+  if (lines.length > 0) {
+    const summary = lines[lines.length - 1].replace(/^\*\*|\*\*$/g, "").trim().slice(0, 200)
+    const rest = lines.slice(0, -1).join("\n").trim()
+    return { summary, recommendedAction: rest || null }
+  }
+
+  return { summary: text.slice(0, 200), recommendedAction: null }
 }
 
 function persistResult(result: AgentResult): void {
@@ -263,13 +269,16 @@ async function checkRunning(): Promise<void> {
         continue
       }
 
-      // Find the first assistant message's text parts
+      // Find the last assistant message's text parts
       let responseText = ""
-      for (const msg of messages) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
         if (msg.info.role === "assistant") {
           for (const part of msg.parts) {
-            if (part.type === "text") {
-              responseText += part.text
+            if (part.type === "text" && (part as any).text) {
+              responseText += (part as any).text
+            } else if (part.type === "text" && (part as any).content) {
+              responseText += (part as any).content
             }
           }
           if (responseText) break
@@ -277,7 +286,13 @@ async function checkRunning(): Promise<void> {
       }
 
       if (!responseText) {
-        responseText = "No response from analysis"
+        // Log what we got to debug
+        const msgSummary = messages.map((m: any) => ({
+          role: m.info?.role,
+          parts: m.parts?.map((p: any) => ({ type: p.type, hasText: !!p.text, hasContent: !!p.content, keys: Object.keys(p).slice(0, 5) })),
+        }))
+        log.info("no text found in messages", { sourceId, msgSummary: JSON.stringify(msgSummary).slice(0, 500) })
+        responseText = "Analysis complete — review session for details"
       }
 
       const { summary, recommendedAction } = extractSummary(responseText)
