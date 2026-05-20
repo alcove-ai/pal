@@ -16,7 +16,7 @@ const inputUndoDefault = process.platform === "win32" ? "ctrl+z,ctrl+-,super+z" 
 
 const KeybindsSchema = Schema.Struct({
   leader: keybind("ctrl+x", "Leader key for keybind combinations"),
-  app_exit: keybind("ctrl+c,ctrl+d,<leader>q", "Exit the application"),
+  app_exit: keybind("ctrl+d,<leader>q", "Exit the application"),
   editor_open: keybind("<leader>e", "Open external editor"),
   theme_list: keybind("<leader>t", "List available themes"),
   sidebar_toggle: keybind("<leader>b", "Toggle sidebar"),

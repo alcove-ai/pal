@@ -228,6 +228,19 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const exit = useExit()
   const promptRef = usePromptRef()
   const [activeTab, setActiveTab] = createSignal(1)
+
+  // Double Ctrl+C to exit
+  let lastCtrlC = 0
+  useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "c" && !evt.shift && !evt.meta) {
+      const now = Date.now()
+      if (now - lastCtrlC < 1000) {
+        exit()
+        return
+      }
+      lastCtrlC = now
+    }
+  })
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
   const routeView = (name: string) => {
