@@ -20,7 +20,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
-import { init as initPool, queueAnalysis, getResult, getRunningCount, type AgentResult } from "@/agent-pool/pool"
+import { init as initPool, queueAnalysis, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -41,6 +41,13 @@ function formatTimestamp(ts: number): string {
   const date = new Date(ts); return `${date.getMonth() + 1}/${date.getDate()}`
 }
 function formatLastChecked(ts: number | null): string { return ts === null ? "never" : formatTimestamp(ts) }
+
+function formatElapsed(ms: number | null): string {
+  if (ms === null) return "..."
+  const secs = Math.floor(ms / 1000)
+  if (secs < 60) return `${secs}s`
+  return `${Math.floor(secs / 60)}m${secs % 60}s`
+}
 
 function sourceChar(source: string): string {
   if (source.toLowerCase().startsWith("jira")) return "J"
@@ -398,12 +405,16 @@ Help me take this action. Fetch the full issue details first.`
     <box width={dimensions().width} flexGrow={1} flexDirection="column">
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>Needs Me</text>
-        <text fg={theme.textMuted}>
-          {" ("}{queue().length}{" items"}
-          {recentCount() > 0 ? `, ${recentCount()} recent` : ""}
-          {getRunningCount() > 0 ? `, ${getRunningCount()} analyzing` : ""}
-          {")"}
-        </text>
+        <text fg={theme.textMuted}>{" ("}{queue().length}{" items)"}</text>
+        {getRunningCount() > 0 && (
+          <text fg={theme.info}>{" "}{spinnerFrames[spinnerFrame()]}{" "}{getRunningCount()}/{getMaxConcurrent()}</text>
+        )}
+        {getQueueCount() > 0 && (
+          <text fg={theme.textMuted}>{" · "}{getQueueCount()}{" queued"}</text>
+        )}
+        {getAnalyzedCount() > 0 && (
+          <text fg={theme.textMuted}>{" · "}{getAnalyzedCount()}{" analyzed"}</text>
+        )}
         <box flexGrow={1} />
         <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
         <box width={1} />
@@ -414,6 +425,7 @@ Help me take this action. Fetch the full issue details first.`
         </box>
       </Show>
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
+        <box width={2} flexShrink={0} />
         <box width={2} flexShrink={0} />
         <box width={2} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Src</text></box>
         <box width={8} flexShrink={0}><text fg={theme.textMuted} attributes={TextAttributes.DIM}>Time</text></box>
@@ -455,12 +467,17 @@ Help me take this action. Fetch the full issue details first.`
                   <box flexDirection="column" backgroundColor={hsel() ? theme.backgroundElement : undefined}>
                     <box height={1} flexDirection="row" paddingLeft={1}>
                       <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{hsel() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
+                      <box width={2} flexShrink={0}>
+                        <text fg={hsel() ? theme.primary : headerItem && isRunning(headerItem.source_id) ? theme.info : headerItem && getResult(headerItem.source_id)?.status === "done" ? theme.success : headerItem && getResult(headerItem.source_id)?.status === "error" ? theme.error : headerItem && isQueued(headerItem.source_id) ? theme.textMuted : theme.textMuted}>
+                          {headerItem && isRunning(headerItem.source_id) ? spinnerFrames[spinnerFrame()] : headerItem && getResult(headerItem.source_id)?.status === "done" ? "✓" : headerItem && getResult(headerItem.source_id)?.status === "error" ? "!" : headerItem && isQueued(headerItem.source_id) ? "·" : " "}
+                        </text>
+                      </box>
                       <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
                       <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
                       <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{hrecent() && !hsel() ? "● " : ""}{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
-                    <box height={1} flexDirection="row" paddingLeft={12}>
+                    <box height={1} flexDirection="row" paddingLeft={14}>
                       {(() => {
                         if (headerItem) {
                           const result = getResult(headerItem.source_id)
@@ -468,7 +485,13 @@ Help me take this action. Fetch the full issue details first.`
                             return <text fg={hsel() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
                           }
                           if (result?.status === "running") {
-                            return <text fg={hsel() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing..."}</text>
+                            return <text fg={hsel() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(headerItem.source_id))}{")..."}</text>
+                          }
+                          if (result?.status === "error") {
+                            return <text fg={hsel() ? theme.primary : theme.error}>{"✗ "}{result.summary}</text>
+                          }
+                          if (isQueued(headerItem.source_id)) {
+                            return <text fg={hsel() ? theme.primary : theme.textMuted}>{"Queued for analysis"}</text>
                           }
                         }
                         return <text fg={hmuted()} attributes={hsel() ? undefined : hrecent() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
@@ -479,7 +502,7 @@ Help me take this action. Fetch the full issue details first.`
               }
               const item = row.item
               const indent = row.indented ? 2 : 0
-              const maxTitleWidth = () => Math.max(dimensions().width - 26 - indent, 10)
+              const maxTitleWidth = () => Math.max(dimensions().width - 28 - indent, 10)
               const isSelected = () => {
                 const idx = selectedIndex()
                 const items = displayItems()
@@ -491,19 +514,30 @@ Help me take this action. Fetch the full issue details first.`
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
+                    <box width={2} flexShrink={0}>
+                      <text fg={isSelected() ? theme.primary : isRunning(item.source_id) ? theme.info : getResult(item.source_id)?.status === "done" ? theme.success : getResult(item.source_id)?.status === "error" ? theme.error : isQueued(item.source_id) ? theme.textMuted : theme.textMuted}>
+                        {isRunning(item.source_id) ? spinnerFrames[spinnerFrame()] : getResult(item.source_id)?.status === "done" ? "✓" : getResult(item.source_id)?.status === "error" ? "!" : isQueued(item.source_id) ? "·" : " "}
+                      </text>
+                    </box>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{sourceChar(item.source)} </text></box>
                     <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
                     <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{itemIsRecent() ? "● " : ""}{hasTriage() ? "◆ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
-                  <box height={1} flexDirection="row" paddingLeft={12 + indent}>
+                  <box height={1} flexDirection="row" paddingLeft={14 + indent}>
                     {(() => {
                       const result = getResult(item.source_id)
                       if (result?.status === "done" && result.summary) {
                         return <text fg={isSelected() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
                       }
                       if (result?.status === "running") {
-                        return <text fg={isSelected() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing..."}</text>
+                        return <text fg={isSelected() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(item.source_id))}{")..."}</text>
+                      }
+                      if (result?.status === "error") {
+                        return <text fg={isSelected() ? theme.primary : theme.error}>{"✗ "}{result.summary}</text>
+                      }
+                      if (isQueued(item.source_id)) {
+                        return <text fg={isSelected() ? theme.primary : theme.textMuted}>{"Queued for analysis"}</text>
                       }
                       return <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
                     })()}

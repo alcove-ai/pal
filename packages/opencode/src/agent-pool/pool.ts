@@ -394,6 +394,36 @@ export function getRunningCount(): number {
   return running.size
 }
 
+export function getQueueCount(): number {
+  return queue.length
+}
+
+export function getAnalyzedCount(): number {
+  let count = 0
+  for (const r of results.values()) {
+    if (r.status === "done") count++
+  }
+  return count
+}
+
+export function isRunning(sourceId: string): boolean {
+  return running.has(sourceId)
+}
+
+export function isQueued(sourceId: string): boolean {
+  return queued.has(sourceId)
+}
+
+export function getElapsedMs(sourceId: string): number | null {
+  const info = running.get(sourceId)
+  if (!info) return null
+  return Date.now() - info.startedAt
+}
+
+export function getMaxConcurrent(): number {
+  return MAX_CONCURRENT
+}
+
 export function stop(): void {
   if (timer) {
     clearInterval(timer)
