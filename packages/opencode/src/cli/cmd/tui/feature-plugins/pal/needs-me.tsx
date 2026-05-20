@@ -360,6 +360,22 @@ Help me take this action. Fetch the full issue details first.`
       return
     }
 
+    // c: toggle collapse/expand all groups
+    if (name === "c") {
+      evt.preventDefault()
+      const rows = displayRows()
+      const allGroupKeys = rows.filter((r) => r.kind === "header").map((r) => r.kind === "header" ? r.groupKey : "")
+      const allCollapsed = allGroupKeys.length > 0 && allGroupKeys.every((k) => collapsedGroups().has(k))
+      if (allCollapsed) {
+        setCollapsedGroups(new Set<string>())
+      } else {
+        setCollapsedGroups(new Set<string>(allGroupKeys))
+      }
+      setSelectedIndex(0)
+      setScrollOffset(0)
+      return
+    }
+
     // Left: collapse group, Right: expand group
     if (name === "left" || name === "right") {
       evt.preventDefault()
@@ -622,7 +638,8 @@ Help me take this action. Fetch the full issue details first.`
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k select  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort mode  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"c collapse all  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand"}</text>
         </box>
       </Show>
