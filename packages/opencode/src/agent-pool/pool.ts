@@ -115,7 +115,7 @@ ACTION: <one sentence recommending what the user should do next>
 URGENCY: <number 1-10, where 10=user must act immediately, 1=no action needed>`
 }
 
-function extractAnalysis(text: string): { summary: string; recommendedAction: string | null; urgency: number } {
+export function extractAnalysis(text: string): { summary: string; recommendedAction: string | null; urgency: number } {
   const lines = text.split("\n")
 
   // Look for STATE:, ACTION:, and URGENCY: lines
@@ -126,7 +126,7 @@ function extractAnalysis(text: string): { summary: string; recommendedAction: st
   // Parse urgency
   let urgency = 5 // default
   if (urgencyLine) {
-    const urgencyText = urgencyLine.replace(/^URGENCY:\s*/i, "").trim()
+    const urgencyText = urgencyLine.trim().replace(/^URGENCY:\s*/i, "").trim()
     const parsed = parseInt(urgencyText, 10)
     if (!isNaN(parsed)) {
       urgency = Math.max(1, Math.min(10, parsed)) // clamp to 1-10
@@ -134,15 +134,15 @@ function extractAnalysis(text: string): { summary: string; recommendedAction: st
   }
 
   if (stateLine || actionLine) {
-    const summary = stateLine ? stateLine.replace(/^STATE:\s*/i, "").trim() : ""
-    const action = actionLine ? actionLine.replace(/^ACTION:\s*/i, "").trim() : null
+    const summary = stateLine ? stateLine.trim().replace(/^STATE:\s*/i, "").trim() : ""
+    const action = actionLine ? actionLine.trim().replace(/^ACTION:\s*/i, "").trim() : null
     return { summary: summary || action || text.slice(0, 200), recommendedAction: action, urgency }
   }
 
   // Fallback: look for SUMMARY: (old format)
   const summaryLine = lines.find((l) => l.trim().toUpperCase().startsWith("SUMMARY:"))
   if (summaryLine) {
-    const summary = summaryLine.replace(/^SUMMARY:\s*/i, "").trim()
+    const summary = summaryLine.trim().replace(/^SUMMARY:\s*/i, "").trim()
     return { summary, recommendedAction: null, urgency }
   }
 

@@ -98,6 +98,46 @@ export function buildDisplayRows(items: ActivityItem[], collapsedGroups: Set<str
 }
 
 /**
+ * Map urgency score (1-10) to a color tier.
+ * Returns a key that callers can map to their theme's palette.
+ */
+export type UrgencyTier = "critical" | "warning" | "normal" | "low"
+
+export function urgencyTier(urgency: number): UrgencyTier {
+  if (urgency >= 8) return "critical"   // red — act now
+  if (urgency >= 5) return "warning"    // yellow — soon
+  if (urgency >= 3) return "normal"     // blue — normal
+  return "low"                          // dim — low priority
+}
+
+/**
+ * Format an urgency score as a compact badge string.
+ */
+export function urgencyBadge(urgency: number): string {
+  if (urgency >= 8) return `${urgency}!`
+  return `${urgency}·`
+}
+
+/**
+ * Sort items by urgency descending (highest urgency first).
+ * Items without a known urgency default to 5.
+ */
+export function sortByPriority(
+  items: ActivityItem[],
+  getUrgency: (sourceId: string) => number,
+): ActivityItem[] {
+  return [...items].sort((a, b) => getUrgency(b.source_id) - getUrgency(a.source_id))
+}
+
+/**
+ * Truncate text to fit within a given width, appending "…" if truncated.
+ */
+export function truncateText(text: string, maxWidth: number): string {
+  if (maxWidth < 4) return text.slice(0, maxWidth)
+  return text.length > maxWidth ? text.slice(0, maxWidth - 1) + "…" : text
+}
+
+/**
  * Filter out "done" items based on their event history and status.
  * An item is considered done if:
  * - Any event in its history has a DONE_EVENT_TYPE (pr_merged, pr_closed, issue_closed)

@@ -17,6 +17,9 @@ import {
   buildDisplayRows,
   DONE_EVENT_TYPES,
   DONE_JIRA_STATUSES,
+  urgencyTier,
+  urgencyBadge,
+  truncateText,
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
@@ -57,15 +60,11 @@ function sourceChar(source: string): string {
 }
 
 function urgencyColor(urgency: number, theme: any): string {
-  if (urgency >= 8) return theme.error     // red — act now
-  if (urgency >= 5) return theme.warning   // yellow — soon
-  if (urgency >= 3) return theme.info      // blue — normal
-  return theme.textMuted                   // dim — low priority
-}
-
-function urgencyBadge(urgency: number): string {
-  if (urgency >= 8) return `${urgency}!`
-  return `${urgency}·`
+  const tier = urgencyTier(urgency)
+  if (tier === "critical") return theme.error
+  if (tier === "warning") return theme.warning
+  if (tier === "normal") return theme.info
+  return theme.textMuted
 }
 
 function getDismissedKeys(): Set<string> {
