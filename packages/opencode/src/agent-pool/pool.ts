@@ -260,7 +260,7 @@ async function checkRunning(): Promise<void> {
     try {
       const msgRes = await api.client.session.messages({
         sessionID: info.sessionId,
-        limit: 5,
+        limit: 50,
       })
       const messages = msgRes.data
       if (!messages) {
@@ -269,30 +269,32 @@ async function checkRunning(): Promise<void> {
         continue
       }
 
-      // Find the last assistant message's text parts
-      let responseText = ""
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i]
+      // Collect ALL text from ALL assistant messages, then find SUMMARY
+      let allText = ""
+      let lastText = ""
+      for (const msg of messages) {
         if (msg.info.role === "assistant") {
+          let msgText = ""
           for (const part of msg.parts) {
             if (part.type === "text" && (part as any).text) {
-              responseText += (part as any).text
-            } else if (part.type === "text" && (part as any).content) {
-              responseText += (part as any).content
+              msgText += (part as any).text
             }
           }
-          if (responseText) break
+          if (msgText) {
+            allText += msgText + "\n"
+            lastText = msgText
+          }
         }
       }
 
-      if (!responseText) {
-        // Log what we got to debug
-        const msgSummary = messages.map((m: any) => ({
-          role: m.info?.role,
-          parts: m.parts?.map((p: any) => ({ type: p.type, hasText: !!p.text, hasContent: !!p.content, keys: Object.keys(p).slice(0, 5) })),
-        }))
-        log.info("no text found in messages", { sourceId, msgSummary: JSON.stringify(msgSummary).slice(0, 500) })
-        responseText = "Analysis complete — review session for details"
+      // Prefer the text containing SUMMARY:, fall back to last text, fall back to all text
+      let responseText = ""
+      if (allText.toUpperCase().includes("SUMMARY:")) {
+        responseText = allText
+      } else if (lastText) {
+        responseText = lastText
+      } else {
+        responseText = allText || "Analysis complete — review session for details"
       }
 
       log.info("raw response text", { sourceId, length: responseText.length, first200: responseText.slice(0, 200), last200: responseText.slice(-200) })

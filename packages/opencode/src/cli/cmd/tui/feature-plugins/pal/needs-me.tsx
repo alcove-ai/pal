@@ -24,7 +24,7 @@ import { init as initPool, queueAnalysis, getResult, getRunningCount, getQueueCo
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
-const OVERFLOW_THRESHOLD = 20
+const OVERFLOW_THRESHOLD = 100
 const OVERFLOW_SUSTAIN_MS = 2 * 60 * 60 * 1000
 const AUTO_SUPPRESS_THRESHOLD = 3
 const SUPPRESSION_DECAY_MS = 30 * 24 * 60 * 60 * 1000
