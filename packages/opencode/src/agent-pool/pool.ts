@@ -443,6 +443,17 @@ export function queueAnalysis(item: ActivityItem): void {
   log.info("queued analysis", { sourceId: item.source_id, title: item.title.slice(0, 60) })
 }
 
+export function forceRequeue(item: ActivityItem): void {
+  if (running.has(item.source_id)) return
+  results.delete(item.source_id)
+  queued.delete(item.source_id)
+  const idx = queue.findIndex((i) => i.source_id === item.source_id)
+  if (idx >= 0) queue.splice(idx, 1)
+  queue.push(item)
+  queued.add(item.source_id)
+  log.info("force re-queued analysis", { sourceId: item.source_id })
+}
+
 export function getResult(sourceId: string): AgentResult | null {
   return results.get(sourceId) ?? null
 }

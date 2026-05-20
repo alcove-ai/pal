@@ -23,7 +23,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
-import { init as initPool, queueAnalysis, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
+import { init as initPool, queueAnalysis, forceRequeue, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -367,6 +367,14 @@ Help me take this action. Fetch the full issue details first.`
       return
     }
 
+    // r: re-evaluate selected item
+    if (name === "r") {
+      evt.preventDefault()
+      const item = items[selectedIndex()]
+      if (item) forceRequeue(item)
+      return
+    }
+
     // s: toggle sort mode
     if (name === "s") {
       evt.preventDefault()
@@ -657,6 +665,7 @@ Help me take this action. Fetch the full issue details first.`
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k select  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"r re-eval  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"c collapse all  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand  "}</text>
