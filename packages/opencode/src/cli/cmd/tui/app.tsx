@@ -1,3 +1,4 @@
+import path from "path"
 import { render, TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import * as Clipboard from "@tui/util/clipboard"
 import * as Selection from "@tui/util/selection"
@@ -139,6 +140,9 @@ export function tui(input: {
     // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
     void renderer.getPalette({ size: 16 }).catch(() => undefined)
     const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
+
+    const dirName = path.basename(process.cwd())
+    process.stdout.write(`\x1b]0;PAL — ${dirName}\x07`)
 
     await render(() => {
       return (
