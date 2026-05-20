@@ -169,8 +169,8 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     const items = computeFilteredQueue(); setQueue(items); setLastChecked(Date.now())
     if (items.length > 0) setHasEverLoaded(true)
 
-    // Queue items for background analysis
-    for (const item of items) {
+    // Queue all selectable items for background analysis (includes milestone headers)
+    for (const item of displayItems()) {
       queueAnalysis(item)
     }
 
