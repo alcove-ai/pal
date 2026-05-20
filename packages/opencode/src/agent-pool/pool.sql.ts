@@ -10,6 +10,7 @@ export const AgentResultTable = sqliteTable(
     status: text().notNull(),
     analyzed_event_ts: integer().notNull(),
     analyzed_at: integer().notNull(),
+    urgency: integer().notNull().default(5),
   },
   (table) => [
     index("agent_result_status_idx").on(table.status),

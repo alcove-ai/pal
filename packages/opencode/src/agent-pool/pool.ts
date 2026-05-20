@@ -21,6 +21,7 @@ export interface AgentResult {
   sessionId: string | null
   summary: string
   recommendedAction: string | null
+  urgency: number
   status: "running" | "done" | "error"
   analyzedEventTs: number
   analyzedAt: number
@@ -62,6 +63,7 @@ function rowToResult(row: typeof AgentResultTable.$inferSelect): AgentResult {
     sessionId: row.session_id ?? null,
     summary: row.summary,
     recommendedAction: row.recommended_action ?? null,
+    urgency: row.urgency,
     status: row.status as AgentResult["status"],
     analyzedEventTs: row.analyzed_event_ts,
     analyzedAt: row.analyzed_at,
@@ -107,38 +109,50 @@ Steps:
 
 CRITICAL: Do NOT ask "shall I post this?" or "would you like me to...?" — just write your analysis and stop. The user will review your analysis later and decide what to do.
 
-End your response with exactly these two lines:
+End your response with exactly these three lines:
 STATE: <one sentence describing the current state of this item>
-ACTION: <one sentence recommending what the user should do next>`
+ACTION: <one sentence recommending what the user should do next>
+URGENCY: <number 1-10, where 10=user must act immediately, 1=no action needed>`
 }
 
-function extractSummary(text: string): { summary: string; recommendedAction: string | null } {
+function extractAnalysis(text: string): { summary: string; recommendedAction: string | null; urgency: number } {
   const lines = text.split("\n")
 
-  // Look for STATE: and ACTION: lines
+  // Look for STATE:, ACTION:, and URGENCY: lines
   const stateLine = lines.find((l) => l.trim().toUpperCase().startsWith("STATE:"))
   const actionLine = lines.find((l) => l.trim().toUpperCase().startsWith("ACTION:"))
+  const urgencyLine = lines.find((l) => l.trim().toUpperCase().startsWith("URGENCY:"))
+
+  // Parse urgency
+  let urgency = 5 // default
+  if (urgencyLine) {
+    const urgencyText = urgencyLine.replace(/^URGENCY:\s*/i, "").trim()
+    const parsed = parseInt(urgencyText, 10)
+    if (!isNaN(parsed)) {
+      urgency = Math.max(1, Math.min(10, parsed)) // clamp to 1-10
+    }
+  }
 
   if (stateLine || actionLine) {
     const summary = stateLine ? stateLine.replace(/^STATE:\s*/i, "").trim() : ""
     const action = actionLine ? actionLine.replace(/^ACTION:\s*/i, "").trim() : null
-    return { summary: summary || action || text.slice(0, 200), recommendedAction: action }
+    return { summary: summary || action || text.slice(0, 200), recommendedAction: action, urgency }
   }
 
   // Fallback: look for SUMMARY: (old format)
   const summaryLine = lines.find((l) => l.trim().toUpperCase().startsWith("SUMMARY:"))
   if (summaryLine) {
     const summary = summaryLine.replace(/^SUMMARY:\s*/i, "").trim()
-    return { summary, recommendedAction: null }
+    return { summary, recommendedAction: null, urgency }
   }
 
   // Last resort: use the last non-empty line
   const nonEmpty = lines.filter((l) => l.trim().length > 0)
   if (nonEmpty.length > 0) {
-    return { summary: nonEmpty[nonEmpty.length - 1].replace(/^\*\*|\*\*$/g, "").trim().slice(0, 200), recommendedAction: null }
+    return { summary: nonEmpty[nonEmpty.length - 1].replace(/^\*\*|\*\*$/g, "").trim().slice(0, 200), recommendedAction: null, urgency }
   }
 
-  return { summary: text.slice(0, 200), recommendedAction: null }
+  return { summary: text.slice(0, 200), recommendedAction: null, urgency }
 }
 
 function persistResult(result: AgentResult): void {
@@ -150,6 +164,7 @@ function persistResult(result: AgentResult): void {
           session_id: result.sessionId,
           summary: result.summary,
           recommended_action: result.recommendedAction,
+          urgency: result.urgency,
           status: result.status,
           analyzed_event_ts: result.analyzedEventTs,
           analyzed_at: result.analyzedAt,
@@ -160,6 +175,7 @@ function persistResult(result: AgentResult): void {
             session_id: result.sessionId,
             summary: result.summary,
             recommended_action: result.recommendedAction,
+            urgency: result.urgency,
             status: result.status,
             analyzed_event_ts: result.analyzedEventTs,
             analyzed_at: result.analyzedAt,
@@ -199,6 +215,7 @@ async function launchSession(item: ActivityItem): Promise<void> {
       sessionId,
       summary: "Analyzing...",
       recommendedAction: null,
+      urgency: 5,
       status: "running",
       analyzedEventTs: item.last_event_ts,
       analyzedAt: now,
@@ -231,6 +248,7 @@ function markError(item: ActivityItem, sessionId: string | null): void {
     sessionId,
     summary: "Analysis failed",
     recommendedAction: null,
+    urgency: 5,
     status: "error",
     analyzedEventTs: item.last_event_ts,
     analyzedAt: now,
@@ -306,13 +324,14 @@ async function checkRunning(): Promise<void> {
       }
 
       log.info("raw response text", { sourceId, length: responseText.length, first200: responseText.slice(0, 200), last200: responseText.slice(-200) })
-      const { summary, recommendedAction } = extractSummary(responseText)
+      const { summary, recommendedAction, urgency } = extractAnalysis(responseText)
       const now = Date.now()
       const result: AgentResult = {
         sourceId,
         sessionId: info.sessionId,
         summary,
         recommendedAction,
+        urgency,
         status: "done",
         analyzedEventTs: info.item.last_event_ts,
         analyzedAt: now,

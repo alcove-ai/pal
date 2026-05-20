@@ -56,6 +56,18 @@ function sourceChar(source: string): string {
   return source.charAt(0).toUpperCase()
 }
 
+function urgencyColor(urgency: number, theme: any): string {
+  if (urgency >= 8) return theme.error     // red — act now
+  if (urgency >= 5) return theme.warning   // yellow — soon
+  if (urgency >= 3) return theme.info      // blue — normal
+  return theme.textMuted                   // dim — low priority
+}
+
+function urgencyBadge(urgency: number): string {
+  if (urgency >= 8) return `${urgency}!`
+  return `${urgency}·`
+}
+
 function getDismissedKeys(): Set<string> {
   try { return Database.use((db) => { const rows = db.select({ work_item_key: DismissedEventTable.work_item_key }).from(DismissedEventTable).where(eq(DismissedEventTable.action, "dismiss")).all(); return new Set(rows.map((r) => r.work_item_key)) }) } catch { return new Set() }
 }
@@ -140,7 +152,20 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [scrollOffset, setScrollOffset] = createSignal(0)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
-  const displayRows = () => buildDisplayRows(queue(), collapsedGroups())
+  const [sortMode, setSortMode] = createSignal<"priority" | "hierarchy">("hierarchy")
+  const displayRows = (): DisplayRow[] => {
+    if (sortMode() === "priority") {
+      // Flat list sorted by urgency descending
+      const items = queue()
+      const sorted = [...items].sort((a, b) => {
+        const ua = getResult(a.source_id)?.urgency ?? 5
+        const ub = getResult(b.source_id)?.urgency ?? 5
+        return ub - ua
+      })
+      return sorted.map((item) => ({ kind: "item" as const, item, indented: false }))
+    }
+    return buildDisplayRows(queue(), collapsedGroups())
+  }
   // All selectable items in display order — headers with items are selectable too
   const displayItems = (): ActivityItem[] => {
     const result: ActivityItem[] = []
@@ -327,6 +352,15 @@ Help me take this action. Fetch the full issue details first.`
       return
     }
 
+    // s: toggle sort mode
+    if (name === "s") {
+      evt.preventDefault()
+      setSortMode((m) => (m === "priority" ? "hierarchy" : "priority"))
+      setSelectedIndex(0)
+      setScrollOffset(0)
+      return
+    }
+
     // Left: collapse group, Right: expand group
     if (name === "left" || name === "right") {
       evt.preventDefault()
@@ -388,12 +422,16 @@ Help me take this action. Fetch the full issue details first.`
     }
 
     // Collect rows that fit in available height
+    // Row height is 3 if item has analysis with recommendedAction, otherwise 2
     const result: DisplayRow[] = []
     let usedRows = 0
     for (let i = startIdx; i < rows.length; i++) {
-      const rowHeight = 2
+      const r = rows[i]
+      const itemForRow = r.kind === "header" ? r.item : r.kind === "item" ? r.item : null
+      const res = itemForRow ? getResult(itemForRow.source_id) : null
+      const rowHeight = res?.status === "done" && res.recommendedAction ? 3 : 2
       if (usedRows + rowHeight > maxRows) break
-      result.push(rows[i])
+      result.push(r)
       usedRows += rowHeight
     }
     return result
@@ -406,6 +444,7 @@ Help me take this action. Fetch the full issue details first.`
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>Needs Me</text>
         <text fg={theme.textMuted}>{" ("}{queue().length}{" items)"}</text>
+        <text fg={theme.info}>{sortMode() === "priority" ? " [Priority ↓]" : " [Grouped]"}</text>
         {getRunningCount() > 0 && (
           <text fg={theme.info}>{" "}{spinnerFrames[spinnerFrame()]}{" "}{getRunningCount()}/{getMaxConcurrent()}</text>
         )}
@@ -450,6 +489,11 @@ Help me take this action. Fetch the full issue details first.`
         <box flexGrow={1} flexDirection="column" overflow="hidden">
           <For each={visibleDisplayRows()}>
             {(row) => {
+              const paddingLeft = 14
+              const truncate = (s: string, extra = 0) => {
+                const maxW = Math.max(dimensions().width - paddingLeft - 2 - extra, 10)
+                return s.length > maxW ? s.slice(0, maxW - 1) + "…" : s
+              }
               if (row.kind === "header") {
                 const headerItem = row.item
                 const headerSelected = () => {
@@ -463,32 +507,41 @@ Help me take this action. Fetch the full issue details first.`
                 const hfg = () => hsel() ? theme.primary : hrecent() ? theme.text : theme.textMuted
                 const hmuted = () => hsel() ? theme.primary : theme.textMuted
                 const maxW = () => Math.max(dimensions().width - 30, 10)
+                const hResult = () => headerItem ? getResult(headerItem.source_id) : null
+                const hAnalyzed = () => hResult()?.status === "done"
+                const hUrgency = () => hResult()?.urgency ?? 5
                 return (
                   <box flexDirection="column" backgroundColor={hsel() ? theme.backgroundElement : undefined}>
                     <box height={1} flexDirection="row" paddingLeft={1}>
                       <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{hsel() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
                       <box width={2} flexShrink={0}>
-                        <text fg={hsel() ? theme.primary : headerItem && isRunning(headerItem.source_id) ? theme.info : headerItem && getResult(headerItem.source_id)?.status === "done" ? theme.success : headerItem && getResult(headerItem.source_id)?.status === "error" ? theme.error : headerItem && isQueued(headerItem.source_id) ? theme.textMuted : theme.textMuted}>
-                          {headerItem && isRunning(headerItem.source_id) ? spinnerFrames[spinnerFrame()] : headerItem && getResult(headerItem.source_id)?.status === "done" ? "✓" : headerItem && getResult(headerItem.source_id)?.status === "error" ? "!" : headerItem && isQueued(headerItem.source_id) ? "·" : " "}
-                        </text>
+                        {(() => {
+                          if (hsel()) return <text fg={theme.primary} attributes={TextAttributes.BOLD}>{hAnalyzed() ? urgencyBadge(hUrgency()) : headerItem && isRunning(headerItem.source_id) ? spinnerFrames[spinnerFrame()] : "· "}</text>
+                          if (headerItem && isRunning(headerItem.source_id)) return <text fg={theme.info}>{spinnerFrames[spinnerFrame()]}</text>
+                          if (hAnalyzed()) return <text fg={urgencyColor(hUrgency(), theme)} attributes={hUrgency() >= 8 ? TextAttributes.BOLD : undefined}>{urgencyBadge(hUrgency())}</text>
+                          if (headerItem && hResult()?.status === "error") return <text fg={theme.error}>{"! "}</text>
+                          if (headerItem && isQueued(headerItem.source_id)) return <text fg={theme.textMuted}>{"· "}</text>
+                          return <text fg={theme.textMuted}>{"  "}</text>
+                        })()}
                       </box>
                       <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
                       <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
                       <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{hrecent() && !hsel() ? "● " : ""}{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
-                    <box height={1} flexDirection="row" paddingLeft={14}>
+                    <box height={1} flexDirection="row" paddingLeft={paddingLeft}>
                       {(() => {
                         if (headerItem) {
-                          const result = getResult(headerItem.source_id)
+                          const result = hResult()
                           if (result?.status === "done" && result.summary) {
-                            return <text fg={hsel() ? theme.primary : theme.success}>{"✓ "}{result.summary}{result.recommendedAction ? ` → ${result.recommendedAction}` : ""}</text>
+                            const stateText = truncate(`State: ${result.summary}`)
+                            return <text fg={hsel() ? theme.primary : urgencyColor(hUrgency(), theme)}>{stateText}</text>
                           }
                           if (result?.status === "running") {
                             return <text fg={hsel() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(headerItem.source_id))}{")..."}</text>
                           }
                           if (result?.status === "error") {
-                            return <text fg={hsel() ? theme.primary : theme.error}>{"✗ "}{result.summary}</text>
+                            return <text fg={hsel() ? theme.primary : theme.error}>{truncate(`✗ ${result.summary}`)}</text>
                           }
                           if (isQueued(headerItem.source_id)) {
                             return <text fg={hsel() ? theme.primary : theme.textMuted}>{"Queued for analysis"}</text>
@@ -497,6 +550,11 @@ Help me take this action. Fetch the full issue details first.`
                         return <text fg={hmuted()} attributes={hsel() ? undefined : hrecent() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
                       })()}
                     </box>
+                    <Show when={hAnalyzed() && hResult()?.recommendedAction}>
+                      <box height={1} flexDirection="row" paddingLeft={paddingLeft}>
+                        <text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.DIM}>{truncate(`→ ${hResult()!.recommendedAction!}`)}</text>
+                      </box>
+                    </Show>
                   </box>
                 )
               }
@@ -510,38 +568,52 @@ Help me take this action. Fetch the full issue details first.`
               }
               const hasTriage = () => triageSessionMap.has(item.source_id)
               const itemIsRecent = () => isRecent(item)
+              const itemResult = () => getResult(item.source_id)
+              const itemAnalyzed = () => itemResult()?.status === "done"
+              const itemUrgency = () => itemResult()?.urgency ?? 5
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
                     <box width={2} flexShrink={0}>
-                      <text fg={isSelected() ? theme.primary : isRunning(item.source_id) ? theme.info : getResult(item.source_id)?.status === "done" ? theme.success : getResult(item.source_id)?.status === "error" ? theme.error : isQueued(item.source_id) ? theme.textMuted : theme.textMuted}>
-                        {isRunning(item.source_id) ? spinnerFrames[spinnerFrame()] : getResult(item.source_id)?.status === "done" ? "✓" : getResult(item.source_id)?.status === "error" ? "!" : isQueued(item.source_id) ? "·" : " "}
-                      </text>
+                      {(() => {
+                        if (isSelected()) return <text fg={theme.primary} attributes={TextAttributes.BOLD}>{itemAnalyzed() ? urgencyBadge(itemUrgency()) : isRunning(item.source_id) ? spinnerFrames[spinnerFrame()] : "· "}</text>
+                        if (isRunning(item.source_id)) return <text fg={theme.info}>{spinnerFrames[spinnerFrame()]}</text>
+                        if (itemAnalyzed()) return <text fg={urgencyColor(itemUrgency(), theme)} attributes={itemUrgency() >= 8 ? TextAttributes.BOLD : undefined}>{urgencyBadge(itemUrgency())}</text>
+                        if (itemResult()?.status === "error") return <text fg={theme.error}>{"! "}</text>
+                        if (isQueued(item.source_id)) return <text fg={theme.textMuted}>{"· "}</text>
+                        return <text fg={theme.textMuted}>{"  "}</text>
+                      })()}
                     </box>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{sourceChar(item.source)} </text></box>
                     <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
                     <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{itemIsRecent() ? "● " : ""}{hasTriage() ? "◆ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
-                  <box height={1} flexDirection="row" paddingLeft={14 + indent}>
+                  <box height={1} flexDirection="row" paddingLeft={paddingLeft + indent}>
                     {(() => {
-                      const result = getResult(item.source_id)
+                      const result = itemResult()
                       if (result?.status === "done" && result.summary) {
-                        return <text fg={isSelected() ? theme.primary : theme.success}>{"✓ "}{result.summary}{result.recommendedAction ? ` → ${result.recommendedAction}` : ""}</text>
+                        const stateText = truncate(`State: ${result.summary}`, indent)
+                        return <text fg={isSelected() ? theme.primary : urgencyColor(itemUrgency(), theme)}>{stateText}</text>
                       }
                       if (result?.status === "running") {
                         return <text fg={isSelected() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing ("}{formatElapsed(getElapsedMs(item.source_id))}{")..."}</text>
                       }
                       if (result?.status === "error") {
-                        return <text fg={isSelected() ? theme.primary : theme.error}>{"✗ "}{result.summary}</text>
+                        return <text fg={isSelected() ? theme.primary : theme.error}>{truncate(`✗ ${result.summary}`, indent)}</text>
                       }
                       if (isQueued(item.source_id)) {
                         return <text fg={isSelected() ? theme.primary : theme.textMuted}>{"Queued for analysis"}</text>
                       }
-                      return <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
+                      return <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{truncate(`${item.event_type}${item.summary ? `: ${item.summary}` : ""}`, indent)}</text>
                     })()}
                   </box>
+                  <Show when={itemAnalyzed() && itemResult()?.recommendedAction}>
+                    <box height={1} flexDirection="row" paddingLeft={paddingLeft + indent}>
+                      <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={TextAttributes.DIM}>{truncate(`→ ${itemResult()!.recommendedAction!}`, indent)}</text>
+                    </box>
+                  </Show>
                 </box>
               )
             }}
@@ -551,6 +623,7 @@ Help me take this action. Fetch the full issue details first.`
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"j/k select  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort mode  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand"}</text>
         </box>
       </Show>
