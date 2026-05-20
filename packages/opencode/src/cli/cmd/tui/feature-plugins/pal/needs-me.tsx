@@ -596,7 +596,7 @@ Help me take this action. Fetch the full issue details first.`,
                       </box>
                       <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
                       <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
-                      <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{hrecent() && !hsel() ? "● " : ""}{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
+                      <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
                     <box height={1} flexDirection="row" paddingLeft={paddingLeft}>
@@ -658,7 +658,7 @@ Help me take this action. Fetch the full issue details first.`,
                     </box>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{sourceChar(item.source)} </text></box>
                     <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{itemIsRecent() ? "● " : ""}{hasTriage() ? "◆ " : ""}{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={paddingLeft + indent}>
