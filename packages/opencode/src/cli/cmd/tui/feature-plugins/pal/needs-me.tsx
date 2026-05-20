@@ -152,10 +152,26 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
   const [sortMode, setSortMode] = createSignal<"priority" | "hierarchy">("hierarchy")
+  const [searchMode, setSearchMode] = createSignal(false)
+  const [searchText, setSearchText] = createSignal("")
+
+  const filteredQueue = (): ActivityItem[] => {
+    const text = searchText().toLowerCase()
+    if (!text) return queue()
+    return queue().filter((item) => {
+      if (item.source_id.toLowerCase().includes(text)) return true
+      if (item.title.toLowerCase().includes(text)) return true
+      if (item.actor?.toLowerCase().includes(text)) return true
+      const result = getResult(item.source_id)
+      if (result?.summary?.toLowerCase().includes(text)) return true
+      if (result?.recommendedAction?.toLowerCase().includes(text)) return true
+      return false
+    })
+  }
+
   const displayRows = (): DisplayRow[] => {
     if (sortMode() === "priority") {
-      // Flat list sorted by urgency descending
-      const items = queue()
+      const items = filteredQueue()
       const sorted = [...items].sort((a, b) => {
         const ua = getResult(a.source_id)?.urgency ?? 5
         const ub = getResult(b.source_id)?.urgency ?? 5
@@ -163,7 +179,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
       })
       return sorted.map((item) => ({ kind: "item" as const, item, indented: false }))
     }
-    return buildDisplayRows(queue(), collapsedGroups())
+    return buildDisplayRows(filteredQueue(), collapsedGroups())
   }
   // All selectable items in display order — headers with items are selectable too
   const displayItems = (): ActivityItem[] => {
@@ -305,6 +321,28 @@ Help me take this action. Fetch the full issue details first.`
     // Don't handle keys when a dialog is open
     if (props.api.ui.dialog.open) return
     if (evt.defaultPrevented) return
+
+    // Search mode: capture all keystrokes as filter text
+    if (searchMode()) {
+      evt.preventDefault()
+      const name = evt.name ?? ""
+      if (name === "escape" || name === "return") {
+        setSearchMode(false)
+        if (name === "escape") { setSearchText(""); setSelectedIndex(0); setScrollOffset(0) }
+        return
+      }
+      if (name === "backspace") {
+        setSearchText((t) => t.slice(0, -1))
+        setSelectedIndex(0); setScrollOffset(0)
+        return
+      }
+      if (name && name.length === 1 && !evt.ctrl && !evt.meta) {
+        setSearchText((t) => t + name)
+        setSelectedIndex(0); setScrollOffset(0)
+      }
+      return
+    }
+
     if (evt.ctrl || evt.meta) return
 
     // Shift+= (+) / Shift+- (_): scale worker pool
@@ -324,9 +362,16 @@ Help me take this action. Fetch the full issue details first.`
     }
 
     const items = displayItems()
-    if (items.length === 0) return
+    if (items.length === 0 && !searchText()) return
 
     const name = evt.name ?? ""
+
+    // /: open search
+    if (name === "/") {
+      evt.preventDefault()
+      setSearchMode(true)
+      return
+    }
 
     // Up / k: move selection up
     if (name === "up" || name === "k") {
@@ -483,8 +528,11 @@ Help me take this action. Fetch the full issue details first.`
     <box width={dimensions().width} flexGrow={1} flexDirection="column">
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>Needs Me</text>
-        <text fg={theme.textMuted}>{" ("}{queue().length}{" items)"}</text>
+        <text fg={theme.textMuted}>{" ("}{filteredQueue().length}{searchText() ? `/${queue().length}` : ""}{" items)"}</text>
         <text fg={theme.info}>{sortMode() === "priority" ? " [Priority ↓]" : " [Grouped]"}</text>
+        {(searchMode() || searchText()) && (
+          <text fg={searchMode() ? theme.warning : theme.info}>{" /"}{searchText()}{searchMode() ? "▌" : ""}</text>
+        )}
         {getRunningCount() > 0 && (
           <text fg={theme.info}>{" "}{spinnerFrames[spinnerFrame()]}{" "}{getRunningCount()}/{getMaxConcurrent()}</text>
         )}
@@ -666,9 +714,9 @@ Help me take this action. Fetch the full issue details first.`
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"enter triage  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"d dismiss  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"r re-eval  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"/ search  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"s sort  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"c collapse all  "}</text>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"←/→ collapse/expand  "}</text>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"c collapse  "}</text>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM}>{"+/- workers"}</text>
         </box>
       </Show>
