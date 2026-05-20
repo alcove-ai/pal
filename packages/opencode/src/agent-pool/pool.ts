@@ -229,16 +229,13 @@ async function checkRunning(): Promise<void> {
   if (!api || running.size === 0) return
 
   // Batch-check statuses for all running sessions
-  let statuses: Record<string, any> | undefined
+  let statuses: Record<string, any> = {}
   try {
     const res = await api.client.session.status()
-    statuses = res.data as Record<string, any> | undefined
+    statuses = (res.data ?? {}) as Record<string, any>
+    log.info("session.status()", { keys: Object.keys(statuses).length, running: running.size })
   } catch (err) {
     log.info("session.status() failed", { error: err })
-    return
-  }
-  if (!statuses) {
-    log.info("session.status() returned no data")
     return
   }
 
