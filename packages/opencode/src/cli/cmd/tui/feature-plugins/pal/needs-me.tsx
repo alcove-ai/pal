@@ -20,6 +20,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
+import { init as initPool, queueAnalysis, getResult, getRunningCount, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
 const REFRESH_INTERVAL_MS = 5_000
@@ -160,6 +161,12 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   function refresh() {
     const items = computeFilteredQueue(); setQueue(items); setLastChecked(Date.now())
     if (items.length > 0) setHasEverLoaded(true)
+
+    // Queue items for background analysis
+    for (const item of items) {
+      queueAnalysis(item)
+    }
+
     const now = Date.now()
     if (items.length > OVERFLOW_THRESHOLD) {
       const since = overflowSince()
@@ -209,14 +216,23 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   void handleSnooze
 
   async function launchTriageSession(item: ActivityItem) {
-    // Resume existing triage session if one exists for this item
+    // Check pool for existing session
+    const poolResult = getResult(item.source_id)
+    if (poolResult?.sessionId) {
+      // Navigate to existing background session
+      triageSessionMap.set(item.source_id, poolResult.sessionId)
+      props.api.route.navigate("session", { sessionID: poolResult.sessionId })
+      return
+    }
+
+    // Check triage session map (for sessions user already opened)
     const existingSessionID = triageSessionMap.get(item.source_id)
     if (existingSessionID) {
       props.api.route.navigate("session", { sessionID: existingSessionID })
       return
     }
 
-    // Create new session
+    // No existing session — create new one (fallback, should be rare)
     const result = await props.api.client.session.create({
       title: `Triage: ${item.title.slice(0, 50)}`,
     })
@@ -382,7 +398,12 @@ Help me take this action. Fetch the full issue details first.`
     <box width={dimensions().width} flexGrow={1} flexDirection="column">
       <box height={1} flexShrink={0} paddingLeft={1} flexDirection="row">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>Needs Me</text>
-        <text fg={theme.textMuted}>{" ("}{queue().length}{" items"}{recentCount() > 0 ? `, ${recentCount()} recent` : ""}{")"}</text>
+        <text fg={theme.textMuted}>
+          {" ("}{queue().length}{" items"}
+          {recentCount() > 0 ? `, ${recentCount()} recent` : ""}
+          {getRunningCount() > 0 ? `, ${getRunningCount()} analyzing` : ""}
+          {")"}
+        </text>
         <box flexGrow={1} />
         <text fg={theme.textMuted}>{"Last checked: "}{formatLastChecked(lastChecked())}</text>
         <box width={1} />
@@ -440,7 +461,18 @@ Help me take this action. Fetch the full issue details first.`
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
                     <box height={1} flexDirection="row" paddingLeft={12}>
-                      <text fg={hmuted()} attributes={hsel() ? undefined : hrecent() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
+                      {(() => {
+                        if (headerItem) {
+                          const result = getResult(headerItem.source_id)
+                          if (result?.status === "done" && result.summary) {
+                            return <text fg={hsel() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
+                          }
+                          if (result?.status === "running") {
+                            return <text fg={hsel() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing..."}</text>
+                          }
+                        }
+                        return <text fg={hmuted()} attributes={hsel() ? undefined : hrecent() ? undefined : TextAttributes.DIM}>{row.collapsed ? "▶ collapsed" : `▼ ${row.count} sub-issue${row.count !== 1 ? "s" : ""}`}{headerItem?.summary ? ` · ${headerItem.summary}` : ""}</text>
+                      })()}
                     </box>
                   </box>
                 )
@@ -465,7 +497,16 @@ Help me take this action. Fetch the full issue details first.`
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={12 + indent}>
-                    <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
+                    {(() => {
+                      const result = getResult(item.source_id)
+                      if (result?.status === "done" && result.summary) {
+                        return <text fg={isSelected() ? theme.primary : theme.success}>{"✓ "}{result.summary}</text>
+                      }
+                      if (result?.status === "running") {
+                        return <text fg={isSelected() ? theme.primary : theme.textMuted}>{spinnerFrames[spinnerFrame()]}{" Analyzing..."}</text>
+                      }
+                      return <text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? undefined : itemIsRecent() ? undefined : TextAttributes.DIM}>{item.event_type}{item.summary ? `: ${item.summary}` : ""}</text>
+                    })()}
                   </box>
                 </box>
               )
@@ -485,6 +526,7 @@ Help me take this action. Fetch the full issue details first.`
 
 const tui: TuiPlugin = async (api) => {
   registerTab({ key: 2, label: "Needs Me", order: 200, render: () => <NeedsMeView api={api} /> })
+  initPool(api)
 }
 
 const plugin: TuiPluginModule & { id: string } = { id, tui }
