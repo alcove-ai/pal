@@ -86,7 +86,7 @@ function buildPrompt(item: ActivityItem): string {
   const role = getRole() ?? "(no role configured)"
   const ts = new Date(item.last_event_ts).toISOString()
 
-  return `You are a process facilitator for the user's team.
+  return `You are a background analysis agent. Your job is to analyze a work item and produce a recommendation. This is a background task — DO NOT ask the user any questions, DO NOT request confirmation, DO NOT offer to take actions. Just analyze and report.
 
 === TEAM PROCESS ===
 ${processDoc}
@@ -99,17 +99,16 @@ Title: ${item.title}
 URL: ${item.url ?? "(none)"}
 Source: ${item.source_id}
 
-IMPORTANT: Before answering, you MUST first fetch the full details of this work item. Use your tools to:
-- Fetch the issue/PR from GitHub (read the full description, comments, labels, milestone, assignees)
-- Read any linked issues or PRs referenced in the description
-- Check the current status and recent activity
+Steps:
+1. Fetch the full details of this work item using your tools (issue description, comments, labels, milestone, assignees).
+2. Determine the current state of this item in the team's process.
+3. Determine what action the user should take next given their role.
+4. If applicable, draft what that action would look like (e.g., a comment draft, a spec outline).
 
-Only AFTER you have fetched and read the actual data, answer these questions:
-1. What is the current state of this item in the team's process?
-2. What specific action should the user take next given their role?
-3. Prepare a draft of that action if possible (e.g., a comment, a spec outline).
+CRITICAL: Do NOT ask "shall I post this?" or "would you like me to...?" — just write your analysis and stop. The user will review your analysis later and decide what to do.
 
-End your response with a single line: SUMMARY: <one sentence recommendation for the dashboard>`
+End your response with exactly this format on its own line:
+SUMMARY: <one sentence recommendation>`
 }
 
 function extractSummary(text: string): { summary: string; recommendedAction: string | null } {
