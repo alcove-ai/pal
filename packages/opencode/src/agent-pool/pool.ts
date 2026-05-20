@@ -245,13 +245,13 @@ async function checkRunning(): Promise<void> {
   for (const [sourceId, info] of running) {
     const st = statuses[info.sessionId]
     if (!st) {
-      log.info("session not found in status response", { sourceId, sessionId: info.sessionId, availableKeys: Object.keys(statuses).slice(0, 5) })
-      continue
+      // Session not in status response = it went idle (status endpoint only returns busy sessions)
+      log.info("session completed (not in busy list)", { sourceId, sessionId: info.sessionId })
+    } else {
+      const statusType = st?.type ?? st?.status ?? (typeof st === "string" ? st : null)
+      if (statusType === "busy") continue
+      log.info("session completed", { sourceId, sessionId: info.sessionId, statusType })
     }
-    // Status might be { type: "idle" } or { status: "idle" } or just a string
-    const statusType = st?.type ?? st?.status ?? (typeof st === "string" ? st : null)
-    log.info("session status", { sourceId, sessionId: info.sessionId, statusType, rawStatus: JSON.stringify(st).slice(0, 100) })
-    if (!statusType || (statusType !== "idle" && statusType !== "complete")) continue
 
     // Session is idle — the prompt finished. Read messages.
     try {
