@@ -544,7 +544,7 @@ Help me take this action. Fetch the full issue details first.`
                 return (
                   <box flexDirection="column" backgroundColor={hsel() ? theme.backgroundElement : undefined}>
                     <box height={1} flexDirection="row" paddingLeft={1}>
-                      <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{hsel() ? "▸" : row.collapsed ? "▶" : "▼"} </text></box>
+                      <box width={2} flexShrink={0}><text fg={hsel() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>{row.collapsed ? "▶" : "▼"}</text></box>
                       <box width={2} flexShrink={0}>
                         {(() => {
                           if (hsel()) return <text fg={theme.primary} attributes={TextAttributes.BOLD}>{hAnalyzed() ? urgencyBadge(hUrgency()) : headerItem && isRunning(headerItem.source_id) ? spinnerFrames[spinnerFrame()] : "· "}</text>
@@ -605,7 +605,7 @@ Help me take this action. Fetch the full issue details first.`
               return (
                 <box flexDirection="column" backgroundColor={isSelected() ? theme.backgroundElement : undefined}>
                   <box height={1} flexDirection="row" paddingLeft={1 + indent}>
-                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{isSelected() ? "▸" : " "} </text></box>
+                    <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : undefined}>{" "}</text></box>
                     <box width={2} flexShrink={0}>
                       {(() => {
                         if (isSelected()) return <text fg={theme.primary} attributes={TextAttributes.BOLD}>{itemAnalyzed() ? urgencyBadge(itemUrgency()) : isRunning(item.source_id) ? spinnerFrames[spinnerFrame()] : "· "}</text>
