@@ -369,28 +369,34 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   )
 
   // Update terminal window title based on current route and session
+  const palNameForTitle = process.env.PAL_NAME
+  const cwdForTitle = process.cwd()
+  const homeForTitle = process.env.HOME ?? ""
+  const dirForTitle = homeForTitle && cwdForTitle.startsWith(homeForTitle) ? "~" + cwdForTitle.slice(homeForTitle.length) : cwdForTitle
+  const baseTitle = palNameForTitle ? `${palNameForTitle} (${dirForTitle})` : `PAL — ${dirForTitle}`
+
   createEffect(() => {
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("PAL")
+      renderer.setTerminalTitle(baseTitle)
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || SessionApi.isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("PAL")
+        renderer.setTerminalTitle(baseTitle)
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`PAL | ${title}`)
+      renderer.setTerminalTitle(`${baseTitle} | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`PAL | ${route.data.id}`)
+      renderer.setTerminalTitle(baseTitle)
     }
   })
 
