@@ -142,8 +142,10 @@ export function tui(input: {
     const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
 
     const palName = process.env.PAL_NAME
-    const titleLabel = palName || path.basename(process.cwd())
-    process.stdout.write(`\x1b]0;${palName ? palName : `PAL — ${titleLabel}`}\x07`)
+    const cwd = process.cwd()
+    const home = process.env.HOME ?? ""
+    const dirLabel = home && cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd
+    process.stdout.write(`\x1b]0;${palName ? `${palName} (${dirLabel})` : `PAL — ${dirLabel}`}\x07`)
 
     await render(() => {
       return (
