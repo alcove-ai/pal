@@ -23,6 +23,7 @@ import {
   type ActivityItem,
   type DisplayRow,
 } from "@/needs-me/needs-me-logic"
+import { applyLinkResolution } from "@/needs-me/link-resolver"
 import { init as initPool, queueAnalysis, forceRequeue, registerSession, getResult, getRunningCount, getQueueCount, getAnalyzedCount, isRunning, isQueued, getElapsedMs, getMaxConcurrent, setMaxConcurrent, type AgentResult } from "@/agent-pool/pool"
 
 const id = "internal:pal-needs-me"
@@ -117,6 +118,7 @@ function computeFilteredQueue(): ActivityItem[] {
             issue_type: (meta?.issue_type as string) ?? null,
             milestone: (meta?.milestone as string) ?? null,
             milestone_url: (meta?.milestone_url as string) ?? null,
+            metadata: meta,
           })
         }
       }
@@ -133,7 +135,9 @@ function computeFilteredQueue(): ActivityItem[] {
 
       // Sort by timestamp descending
       items.sort((a, b) => b.last_event_ts - a.last_event_ts)
-      return items
+
+      // Apply link resolution: collapse linked PRs into their parent issues
+      return applyLinkResolution(items)
     })
   } catch {
     return []
@@ -596,7 +600,12 @@ Help me take this action. Fetch the full issue details first.`,
                       </box>
                       <box width={2} flexShrink={0}><text fg={hmuted()}>{headerItem ? sourceChar(headerItem.source) : "?"} </text></box>
                       <box width={8} flexShrink={0}><text fg={hmuted()}>{headerItem ? formatTimestamp(headerItem.last_event_ts) : ""}</text></box>
-                      <box flexGrow={1}><text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{row.label.length > maxW() ? row.label.slice(0, maxW() - 1) + "…" : row.label}</text></box>
+                      <box flexGrow={1} flexDirection="row">
+                        <text fg={hfg()} attributes={hsel() ? TextAttributes.BOLD : hrecent() ? TextAttributes.BOLD : undefined}>{row.label.length > maxW() - (headerItem?.linkedPrCount ? 7 : 0) ? row.label.slice(0, maxW() - (headerItem?.linkedPrCount ? 7 : 0) - 1) + "…" : row.label}</text>
+                        <Show when={headerItem?.linkedPrCount && headerItem!.linkedPrCount! > 0}>
+                          <text fg={hsel() ? theme.primary : theme.info}>{` [${headerItem!.linkedPrCount} PR${headerItem!.linkedPrCount! > 1 ? "s" : ""}]`}</text>
+                        </Show>
+                      </box>
                       <box width={6} flexShrink={0}><text fg={hmuted()}>{"("}{row.count}{")"}</text></box>
                     </box>
                     <box height={1} flexDirection="row" paddingLeft={paddingLeft}>
@@ -658,7 +667,12 @@ Help me take this action. Fetch the full issue details first.`,
                     </box>
                     <box width={2} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{sourceChar(item.source)} </text></box>
                     <box width={8} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{formatTimestamp(item.last_event_ts)}</text></box>
-                    <box flexGrow={1}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{item.title.length > maxTitleWidth() ? item.title.slice(0, maxTitleWidth() - 1) + "…" : item.title}</text></box>
+                    <box flexGrow={1} flexDirection="row">
+                      <text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted} attributes={isSelected() ? TextAttributes.BOLD : itemIsRecent() ? TextAttributes.BOLD : TextAttributes.DIM}>{item.title.length > maxTitleWidth() - (item.linkedPrCount ? 7 : 0) ? item.title.slice(0, maxTitleWidth() - (item.linkedPrCount ? 7 : 0) - 1) + "…" : item.title}</text>
+                      <Show when={item.linkedPrCount && item.linkedPrCount > 0}>
+                        <text fg={isSelected() ? theme.primary : theme.info}>{` [${item.linkedPrCount} PR${item.linkedPrCount! > 1 ? "s" : ""}]`}</text>
+                      </Show>
+                    </box>
                     <box width={14} flexShrink={0}><text fg={isSelected() ? theme.primary : itemIsRecent() ? theme.text : theme.textMuted}>{(item.actor ?? "").length > 12 ? (item.actor ?? "").slice(0, 11) + "…" : (item.actor ?? "")}</text></box>
                   </box>
                   <box height={1} flexDirection="row" paddingLeft={paddingLeft + indent}>

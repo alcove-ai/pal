@@ -56,6 +56,20 @@ const results = new Map<string, AgentResult>()
 /** Set of source_ids currently queued, to avoid duplicates. */
 const queued = new Set<string>()
 
+/**
+ * Cross-references between items: primary source_id -> linked ActivityItems.
+ * Populated by the link resolver after each Needs Me refresh cycle.
+ * When a Jira issue links to PRs, the issue is the primary and the PRs are linked.
+ * When a PR links to a Jira issue, the PR is the primary and the issue is linked.
+ */
+const linkedItems = new Map<string, ActivityItem[]>()
+
+/**
+ * Reverse index: source_id of a linked (non-primary) item -> primary source_id.
+ * Used by queueAnalysis() to skip items that will be analyzed as part of a primary item.
+ */
+const linkedSecondaryIds = new Set<string>()
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -91,6 +105,22 @@ function buildPrompt(item: ActivityItem): string {
   const role = getRole() ?? "(no role configured)"
   const ts = new Date(item.last_event_ts).toISOString()
 
+  // Build the related items section if cross-references exist
+  let relatedSection = ""
+  const links = linkedItems.get(item.source_id)
+  if (links && links.length > 0) {
+    const lines = links.map((linked) => {
+      const kind = linked.source.startsWith("jira") ? "Issue" : "PR"
+      const label = linked.source_id.replace(/^(github|jira):/, "")
+      return `- [${kind}] ${label} "${linked.title}" (${linked.url ?? "no url"})`
+    })
+    relatedSection = `
+=== RELATED ITEMS ===
+${lines.join("\n")}
+
+`
+  }
+
   return `You are a background analysis agent. Your job is to analyze a work item and produce a recommendation. This is a background task — DO NOT ask the user any questions, DO NOT request confirmation, DO NOT offer to take actions. Just analyze and report.
 
 === TEAM PROCESS ===
@@ -103,9 +133,8 @@ ${role}
 Title: ${item.title}
 URL: ${item.url ?? "(none)"}
 Source: ${item.source_id}
-
-Steps:
-1. Fetch the full details of this work item using your tools (issue description, comments, labels, milestone, assignees).
+${relatedSection}Steps:
+1. Fetch the full details of this work item using your tools (issue description, comments, labels, milestone, assignees).${links && links.length > 0 ? "\n   Also consider the related items listed above — fetch their details if needed for a complete picture." : ""}
 2. Determine the current state of this item in the team's process.
 3. Determine what action the user should take next given their role.
 4. If applicable, draft what that action would look like (e.g., a comment draft, a spec outline).
@@ -453,6 +482,13 @@ export function queueAnalysis(item: ActivityItem): void {
   // Already queued or running?
   if (queued.has(item.source_id) || running.has(item.source_id)) return
 
+  // Skip items that are linked as secondary to a primary item.
+  // They'll be analyzed as context when the primary item is processed.
+  if (linkedSecondaryIds.has(item.source_id)) {
+    log.info("skipped queueing linked secondary item", { sourceId: item.source_id })
+    return
+  }
+
   // Check if we already have a recent-enough result
   const existing = results.get(item.source_id)
   if (existing && existing.analyzedEventTs >= item.last_event_ts && existing.status !== "error") {
@@ -527,6 +563,30 @@ export function setMaxConcurrent(n: number): number {
   maxConcurrent = Math.max(MIN_CONCURRENT, Math.min(MAX_CONCURRENT_CEILING, n))
   log.info("max concurrent updated", { maxConcurrent, running: running.size })
   return maxConcurrent
+}
+
+/**
+ * Update the cross-reference map with linked items from the link resolver.
+ * Called by the Needs Me refresh cycle after link resolution completes.
+ *
+ * @param links - Map from primary source_id to its linked ActivityItems.
+ *   For example, a Jira issue source_id maps to its associated PRs.
+ */
+export function setLinkedItems(links: Map<string, ActivityItem[]>): void {
+  linkedItems.clear()
+  linkedSecondaryIds.clear()
+
+  for (const [primaryId, items] of links) {
+    linkedItems.set(primaryId, items)
+    for (const item of items) {
+      linkedSecondaryIds.add(item.source_id)
+    }
+  }
+
+  log.info("linked items updated", {
+    primaryCount: linkedItems.size,
+    secondaryCount: linkedSecondaryIds.size,
+  })
 }
 
 export function stop(): void {

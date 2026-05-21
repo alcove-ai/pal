@@ -19,6 +19,10 @@ export type ActivityItem = {
   issue_type: string | null
   milestone: string | null
   milestone_url: string | null
+  /** Number of linked PRs (set by link resolver when PRs are collapsed into this issue) */
+  linkedPrCount?: number
+  /** Original metadata from the activity event (used by link resolver for cross-referencing) */
+  metadata?: Record<string, unknown> | null
 }
 
 export type DisplayRow =
