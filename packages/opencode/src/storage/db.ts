@@ -30,13 +30,30 @@ const log = Log.create({ service: "db" })
 
 export function getChannelPath() {
   const dir = path.join(process.cwd(), ".opencode")
-  if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
-    return path.join(dir, "data.db")
-  const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
-  return path.join(dir, `data-${safe}.db`)
+  const palName = process.env.PAL_NAME
+
+  // Determine the base filename depending on installation channel
+  let base: string
+  if (["latest", "beta", "prod"].includes(InstallationChannel) || Flag.OPENCODE_DISABLE_CHANNEL_DB) {
+    base = "data"
+  } else {
+    const safe = InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")
+    base = `data-${safe}`
+  }
+
+  // When PAL_NAME is set, each named agent gets its own database file
+  if (palName) {
+    const safeName = palName.replace(/[^a-zA-Z0-9._-]/g, "-")
+    return path.join(dir, `${base}-${safeName}.db`)
+  }
+
+  return path.join(dir, `${base}.db`)
 }
 
 function migrateFromLegacyPath(newPath: string): void {
+  // Legacy migration only applies to the default (unnamed) database.
+  // Named agents (PAL_NAME) start fresh with their own DB file.
+  if (process.env.PAL_NAME) return
   if (existsSync(newPath)) return
   const hash = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 12)
   const legacyPath = path.join(Global.Path.data, `opencode-${hash}.db`)
