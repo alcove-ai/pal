@@ -20,7 +20,7 @@ const DEFAULT_TIER3_REPOS: string[] = []
 const DEFAULT_BOT_IGNORE_LIST = ["dependabot[bot]", "renovate[bot]", "github-actions[bot]"]
 
 /** Notification reasons we care about */
-const TRACKED_REASONS = new Set(["assign", "review_requested", "mention", "comment", "team_mention", "author"])
+const TRACKED_REASONS = new Set(["assign", "review_requested", "mention", "comment", "team_mention", "author", "subscribed", "state_change"])
 
 /** Map GitHub notification reasons to our event types */
 const REASON_TO_EVENT_TYPE: Record<string, ActivityEventType> = {
@@ -294,6 +294,22 @@ async function pollNotifications(
     }
 
     const subjectNumber = notif.subject.url ? extractNumberFromUrl(notif.subject.url) : null
+
+    // Fetch actual state to detect closures/merges the notification reason doesn't reveal
+    if (subjectNumber && notif.subject.url) {
+      try {
+        if (notif.subject.type === "PullRequest") {
+          const pr = await ghApi<GitHubPR>(notif.subject.url.replace("https://api.github.com", ""))
+          if (pr?.merged_at) eventType = "pr_merged"
+          else if (pr?.state === "closed") eventType = "pr_closed"
+        } else if (notif.subject.type === "Issue") {
+          const issue = await ghApi<GitHubIssue>(notif.subject.url.replace("https://api.github.com", ""))
+          if (issue?.state === "closed") eventType = "issue_closed"
+        }
+      } catch {
+        // If fetch fails, keep the original event type
+      }
+    }
     const sourceId = subjectNumber ? `${repoFullName}#${subjectNumber}` : `${repoFullName}#notif-${notif.id}`
 
     const jiraKeys = extractJiraKeys(notif.subject.title)
