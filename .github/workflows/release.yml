@@ -46,9 +46,17 @@ jobs:
           OPENCODE_CHANNEL="latest" \
           bun run script/ci-build.ts bun-linux-x64 ../../pal-linux-x64
 
+      - name: Build darwin-arm64
+        run: |
+          cd packages/opencode
+          OPENCODE_VERSION="${{ steps.version.outputs.version }}" \
+          OPENCODE_CHANNEL="latest" \
+          bun run script/ci-build.ts bun-darwin-arm64 ../../pal-darwin-arm64
+
       - name: Generate checksums
         run: |
           sha256sum pal-linux-x64 | awk '{print $1}' > pal-linux-x64.sha256
+          sha256sum pal-darwin-arm64 | awk '{print $1}' > pal-darwin-arm64.sha256
           echo "${{ steps.version.outputs.version }}" > version.txt
 
       - name: Publish to packages.redhat.com
@@ -115,10 +123,12 @@ jobs:
           }
           remove_old_latest
 
-          upload_file pal-linux-x64        "v${VERSION}/pal-linux-x64"
-          upload_file pal-linux-x64.sha256  "v${VERSION}/pal-linux-x64.sha256"
-          upload_file version.txt           "v${VERSION}/version.txt"
-          upload_file version.txt           "latest/version.txt"
+          upload_file pal-linux-x64           "v${VERSION}/pal-linux-x64"
+          upload_file pal-linux-x64.sha256   "v${VERSION}/pal-linux-x64.sha256"
+          upload_file pal-darwin-arm64        "v${VERSION}/pal-darwin-arm64"
+          upload_file pal-darwin-arm64.sha256 "v${VERSION}/pal-darwin-arm64.sha256"
+          upload_file version.txt             "v${VERSION}/version.txt"
+          upload_file version.txt             "latest/version.txt"
 
       - name: Create Pulp publication
         env:
