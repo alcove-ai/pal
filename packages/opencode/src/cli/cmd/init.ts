@@ -26,6 +26,7 @@ export const InitCommand = cmd({
       placeholder: "e.g. percy, pulp-ops",
       validate: (v) => {
         if (!v || !v.trim()) return "Name is required"
+        if (v.trim().toLowerCase() === "pal") return "Cannot use 'pal' — that would overwrite the PAL binary"
         if (/[^a-zA-Z0-9._-]/.test(v.trim())) return "Name must only contain letters, digits, dots, dashes, or underscores"
       },
     })
