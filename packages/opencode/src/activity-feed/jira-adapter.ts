@@ -99,6 +99,22 @@ export function createJiraAdapter(mcpTools: () => Promise<Record<string, McpTool
   return {
     source: "jira",
 
+    configHash(): string | null {
+      const config = PalConfig.get()
+      const feeds = config.activityFeed?.jira?.feeds
+      if (!feeds || feeds.length === 0) return null
+      const key = feeds
+        .map((f) => `${f.label}:${f.jql}:${f.mode ?? "own"}`)
+        .sort()
+        .join("|")
+      let hash = 2166136261
+      for (let i = 0; i < key.length; i++) {
+        hash ^= key.charCodeAt(i)
+        hash = (hash * 16777619) >>> 0
+      }
+      return hash.toString(36)
+    },
+
     async isAvailable(): Promise<boolean> {
       try {
         const tools = await mcpTools()

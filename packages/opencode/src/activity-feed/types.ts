@@ -55,6 +55,8 @@ export interface PollingAdapter {
   source: ActivitySource
   poll(): Promise<ActivityEvent[]>
   isAvailable(): Promise<boolean>
+  /** Stable hash of the adapter's effective config. Used to detect config changes. */
+  configHash(): string | null
 }
 
 export interface PollState {
@@ -63,4 +65,5 @@ export interface PollState {
   last_poll_ts: number
   last_success_ts: number | null
   consecutive_failures: number
+  config_hash: string | null
 }

@@ -122,6 +122,20 @@ export function createGitLabAdapter(
   return {
     source: "gitlab",
 
+    configHash(): string | null {
+      if (repos.length === 0) return null
+      const key = repos
+        .map((r) => `${r.projectId}:${r.projectPath}:${r.mode ?? "own"}`)
+        .sort()
+        .join("|")
+      let hash = 2166136261
+      for (let i = 0; i < key.length; i++) {
+        hash ^= key.charCodeAt(i)
+        hash = (hash * 16777619) >>> 0
+      }
+      return hash.toString(36)
+    },
+
     async isAvailable(): Promise<boolean> {
       try {
         const tools = await mcpTools()

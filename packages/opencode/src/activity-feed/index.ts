@@ -22,7 +22,10 @@ const RECOVERY_THRESHOLD = 3
 const RETENTION_DAYS = 30
 const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000
 const PRUNE_BATCH_LIMIT = 500
-const FIRST_RUN_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000
+// Lookback filter removed: the DB dedup index (activity_event_dedup_idx)
+// prevents duplicate inserts via onConflictDoNothing, and the prune job
+// handles retention. The timestamp filter was redundant and caused a
+// "poisoned state" bug where misconfigured first runs permanently blocked events.
 
 // Bus events
 export const ActivityEventsUpdated = BusEvent.define(
@@ -143,6 +146,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
             last_poll_ts: state.last_poll_ts,
             last_success_ts: state.last_success_ts,
             consecutive_failures: state.consecutive_failures,
+            config_hash: state.config_hash,
           })
           .onConflictDoUpdate({
             target: PollStateTable.id,
@@ -150,6 +154,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
               last_poll_ts: state.last_poll_ts,
               last_success_ts: state.last_success_ts,
               consecutive_failures: state.consecutive_failures,
+              config_hash: state.config_hash,
             },
           })
           .run()
@@ -239,44 +244,50 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
         const state = getPollState(source)
         const now = Date.now()
 
-        // First run uses 24h lookback
-        const _lookbackTs = state?.last_poll_ts ?? now - FIRST_RUN_LOOKBACK_MS
+        // Detect config changes (e.g. JQL query changed, project ID changed)
+        const currentConfigHash = adapter.configHash()
+        const configChanged = state != null && currentConfigHash != null && state.config_hash !== currentConfigHash
+        if (configChanged) {
+          log.info("adapter config changed, resetting failure state", {
+            source,
+            oldHash: state!.config_hash,
+            newHash: currentConfigHash,
+          })
+        }
 
         const events = await adapter.poll()
 
-        // Filter events to only those within our lookback window
-        const lookbackCutoff = now - FIRST_RUN_LOOKBACK_MS
-        const filteredEvents = state
-          ? events.filter((e) => e.timestamp >= (state.last_poll_ts ?? 0))
-          : events.filter((e) => e.timestamp >= lookbackCutoff)
-
-        if (events.length > 0 && filteredEvents.length === 0) {
-          const sample = events.slice(0, 3).map((e) => ({ ts: e.timestamp, title: e.title?.slice(0, 40), age_days: Math.round((now - e.timestamp) / 86400000) }))
-          log.info("all events filtered by lookback", { source, cutoff: new Date(lookbackCutoff).toISOString(), sample })
-        }
-
-        const inserted = insertEvents(filteredEvents)
+        // No client-side timestamp filter: the DB dedup index
+        // (onConflictDoNothing) prevents duplicates, and adapter
+        // pagination limits (30-50 items) keep volume bounded.
+        const inserted = insertEvents(events)
 
         // Classify upstream events for relevance (non-blocking)
         if (inserted > 0) {
           try {
-            const watchEvents = filteredEvents.filter((e) => e.mode === "watch")
+            const watchEvents = events.filter((e) => e.mode === "watch")
             if (watchEvents.length > 0) await UpstreamRelevance.classifyBatch(watchEvents)
           } catch (err) {
             log.debug("relevance classification failed", { error: err })
           }
         }
 
-        const consecutiveFailures = state?.consecutive_failures ?? 0
+        // Failure tracking:
+        // - Config change resets failures to 0
+        // - Successful poll gradually reduces failures
+        // - last_poll_ts is always now (monitoring/backoff only, never used for filtering)
+        // - last_success_ts only advances when events were actually inserted
+        const prevFailures = configChanged ? 0 : (state?.consecutive_failures ?? 0)
         const newFailures =
-          consecutiveFailures > 0 && consecutiveFailures <= RECOVERY_THRESHOLD ? consecutiveFailures - 1 : 0
+          prevFailures > 0 && prevFailures <= RECOVERY_THRESHOLD ? prevFailures - 1 : 0
 
         upsertPollState({
           id: source,
           source,
           last_poll_ts: now,
-          last_success_ts: now,
+          last_success_ts: inserted > 0 ? now : (state?.last_success_ts ?? null),
           consecutive_failures: newFailures,
+          config_hash: currentConfigHash,
         })
 
         if (inserted > 0 && bridge) {
@@ -292,13 +303,13 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
                 source,
                 status: "ok" as const,
                 consecutiveFailures: newFailures,
-                lastSuccessTs: now,
+                lastSuccessTs: inserted > 0 ? now : (state?.last_success_ts ?? undefined),
               })
               .pipe(Effect.ignore),
           )
         }
 
-        log.info("poll complete", { source, events: events.length, filtered: filteredEvents.length, inserted })
+        log.info("poll complete", { source, total: events.length, inserted })
       } catch (err) {
         log.error("poll failed", { source, error: err })
 
@@ -311,6 +322,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | MCP.Service> = Lay
           last_poll_ts: Date.now(),
           last_success_ts: state?.last_success_ts ?? null,
           consecutive_failures: failures,
+          config_hash: state?.config_hash ?? null,
         })
 
         if (bridge) {

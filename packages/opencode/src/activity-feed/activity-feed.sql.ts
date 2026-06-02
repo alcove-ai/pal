@@ -40,4 +40,5 @@ export const PollStateTable = sqliteTable("poll_state", {
   last_poll_ts: integer().notNull(),
   last_success_ts: integer(),
   consecutive_failures: integer().notNull().default(0),
+  config_hash: text(),
 })

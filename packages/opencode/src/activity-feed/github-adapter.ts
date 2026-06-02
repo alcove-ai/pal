@@ -223,6 +223,23 @@ export function createGitHubAdapter(config?: GitHubAdapterConfig): PollingAdapte
   return {
     source: "github",
 
+    configHash(): string | null {
+      const parts = [
+        ...tier1.map((r) => `t1:${r}`),
+        ...tier2.map((r) => `t2:${r}`),
+        ...tier3.map((r) => `t3:${r}`),
+        ...(upstreamOrg ? [`org:${upstreamOrg}`] : []),
+      ].sort()
+      if (parts.length === 0) return null
+      const key = parts.join("|")
+      let hash = 2166136261
+      for (let i = 0; i < key.length; i++) {
+        hash ^= key.charCodeAt(i)
+        hash = (hash * 16777619) >>> 0
+      }
+      return hash.toString(36)
+    },
+
     async isAvailable(): Promise<boolean> {
       try {
         const result = await ghExec(["auth", "status"])
