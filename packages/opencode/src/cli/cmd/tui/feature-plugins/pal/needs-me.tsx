@@ -721,7 +721,7 @@ Help me take this action. Fetch the full issue details first.`,
 }
 
 const tui: TuiPlugin = async (api) => {
-  registerTab({ key: 2, label: "Needs Me", order: 200, render: () => <NeedsMeView api={api} /> })
+  registerTab({ key: 1, label: "Needs Me", order: 100, render: () => <NeedsMeView api={api} /> })
   initPool(api)
 }
 

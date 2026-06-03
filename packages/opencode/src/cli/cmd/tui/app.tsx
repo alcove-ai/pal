@@ -46,7 +46,7 @@ import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
 import { TabBar } from "@tui/component/tab-bar"
-import { getTabs, getTabCount } from "@tui/pal/tab-registry"
+import { getTabs, getTabCount, AGENT_TAB_KEY } from "@tui/pal/tab-registry"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -347,7 +347,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     }
 
     // Tab cycles forward on dashboard tabs (not Agent tab where it's used for autocomplete)
-    if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta && activeTab() !== 1) {
+    if (evt.name === "tab" && !evt.shift && !evt.ctrl && !evt.meta && activeTab() !== AGENT_TAB_KEY) {
       evt.preventDefault()
       setActiveTab((activeTab() % count) + 1)
     }
@@ -588,7 +588,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       keybind: "agent_cycle",
       category: "Agent",
       hidden: true,
-      get enabled() { return activeTab() === 1 },
+      get enabled() { return activeTab() === AGENT_TAB_KEY },
       onSelect: () => {
         local.agent.move(1)
       },
@@ -621,7 +621,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       keybind: "agent_cycle_reverse",
       category: "Agent",
       hidden: true,
-      get enabled() { return activeTab() === 1 },
+      get enabled() { return activeTab() === AGENT_TAB_KEY },
       onSelect: () => {
         local.agent.move(-1)
       },
@@ -868,14 +868,14 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
-  // Automatically switch to Agent tab (tab 1) when navigating to a session
+  // Automatically switch to Agent tab when navigating to a session
   createEffect(() => {
     // Track both type and sessionID so this fires on every session navigation,
     // not just the first one (type stays "session" across navigations)
     const type = route.data.type
     const _id = route.data.type === "session" ? route.data.sessionID : undefined
     if (type === "session") {
-      setActiveTab(1)
+      setActiveTab(AGENT_TAB_KEY)
     }
   })
 
@@ -977,7 +977,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       <Show when={ready()}>
         <TabBar activeTab={activeTab()} />
         <Switch>
-          <Match when={activeTab() === 1}>
+          <Match when={activeTab() === AGENT_TAB_KEY}>
             <Switch>
               <Match when={route.data.type === "home"}>
                 <Home />

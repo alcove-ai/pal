@@ -300,7 +300,7 @@ function ActivityView() {
 }
 
 const tui: TuiPlugin = async () => {
-  registerTab({ key: 4, label: "Activity", order: 400, render: () => <ActivityView /> })
+  registerTab({ key: 5, label: "Activity", order: 500, render: () => <ActivityView /> })
 
   AppRuntime.runPromise(
     Effect.gen(function* () {

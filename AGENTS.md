@@ -48,8 +48,8 @@ team member's workstation.
 
 | Tab | Route file | Purpose |
 |-----|-----------|---------|
+| Needs Me | `routes/needs-me.tsx` | Items classified as needing human action (landing tab) |
 | Agent | `routes/home.tsx` | Chat interface (inherited from opencode) |
-| Needs Me | `routes/needs-me.tsx` | Items classified as needing human action |
 | Domains | `routes/domains.tsx` | Domain health dashboard |
 | Activity | `routes/activity.tsx` | Unified activity feed from all sources |
 | Settings | `routes/settings-pal.tsx` | PAL-specific configuration |

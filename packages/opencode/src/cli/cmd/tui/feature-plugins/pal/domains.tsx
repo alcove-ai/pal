@@ -201,7 +201,7 @@ function DomainsView() {
 }
 
 const tui: TuiPlugin = async () => {
-  registerTab({ key: 3, label: "Domains", order: 300, render: () => <DomainsView /> })
+  registerTab({ key: 4, label: "Domains", order: 400, render: () => <DomainsView /> })
 }
 
 const plugin: TuiPluginModule & { id: string } = { id, tui }

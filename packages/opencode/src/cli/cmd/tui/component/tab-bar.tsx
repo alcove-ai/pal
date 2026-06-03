@@ -3,7 +3,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
-import { getTabs } from "@tui/pal/tab-registry"
+import { getTabs, AGENT_TAB_KEY } from "@tui/pal/tab-registry"
 import { onUpdateComplete } from "@/installation/pal-update"
 
 type TabDisplay = { key: number; label: string }
@@ -17,7 +17,7 @@ export function TabBar(props: { activeTab: number }) {
 
   const allTabs = createMemo<TabDisplay[]>(() => {
     const palTabs = getTabs().map((t) => ({ key: t.key, label: t.label }))
-    return [{ key: 1, label: "Agent" }, ...palTabs]
+    return [{ key: AGENT_TAB_KEY, label: "Agent" }, ...palTabs].sort((a, b) => a.key - b.key)
   })
 
   const version = `PAL v${InstallationVersion}`

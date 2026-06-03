@@ -38,7 +38,7 @@ Built on [opencode](https://github.com/anomalyco/opencode).
    pal
    ```
 
-6. Navigate to the **Needs Me** tab with `Shift+Right`. You should see items from your repo. Use `pal --upgrade` to check for updates.
+6. PAL opens to the **Needs Me** tab. You should see items from your repo. Use `pal --upgrade` to check for updates.
 
 ## Named Agents (`pal init`)
 
@@ -83,12 +83,12 @@ When `PAL_NAME` is set, PAL loads `.opencode/roles/{name}.md`. Without it, PAL f
 
 ## Tabs
 
-Navigate between tabs with `Shift+Left` / `Shift+Right`.
+Needs Me is the landing tab. Navigate between tabs with `Shift+Left` / `Shift+Right`.
 
 | Tab | What it shows |
 |-----|---------------|
-| **Agent** | Chat interface for AI agent sessions |
 | **Needs Me** | Items needing your attention, with urgency scoring and recommendations |
+| **Agent** | Chat interface for AI agent sessions |
 | **Domains** | Health signals per team-owned domain |
 | **Activity** | Unified feed from Jira, GitHub, and GitLab |
 | **Settings** | PAL-specific configuration |
