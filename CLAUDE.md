@@ -13,6 +13,8 @@ This workspace uses **AGENTS.md** as the canonical project context. Read it firs
 - Propose a short plan for non-trivial work; then implement.
 - After edits, suggest **tests** or **verification** commands (e.g. `bun turbo typecheck`).
 - For commits: use conventional commit style (`feat:`, `fix:`, `docs:`, etc.).
+- **Do NOT bump versions or cut releases** unless explicitly asked. Pushes to main do not publish.
+- To release: bump version in `packages/opencode/package.json`, commit, then `make release`.
 
 ## Tech stack (quick reference)
 

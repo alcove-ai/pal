@@ -119,10 +119,13 @@ failures (max 300s). Poll state is persisted so restarts resume cleanly.
 - Follow existing patterns in the codebase. The project inherits opencode's
   architecture (Effect services, bus events, storage layer).
 - Typecheck before pushing: `bun turbo typecheck`
-- Run dev mode: `bun run dev`
+- Run from source: `cd <config-dir> && pal-dev` or `PAL_BIN=pal-dev brian-po`
 - Tests live alongside source in `test/` directories. Run per-package, not from root.
 - Prettier config: no semicolons, 120 character print width.
 - Use Effect-TS patterns for services (Context.Tag, Layer, Effect.gen).
+- **Releases are tag-based.** Push to main freely (CI builds but doesn't
+  publish). When ready to release: bump version in `package.json`, commit,
+  then `make release` to tag and push. CI publishes only on tag push.
 
 ## Gotchas
 
