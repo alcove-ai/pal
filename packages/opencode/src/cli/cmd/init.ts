@@ -178,7 +178,7 @@ export const InitCommand = cmd({
 
     lines.push(`export PAL_NAME=${quote(name.trim())}`)
     lines.push("")
-    lines.push(`cd ${quote(resolvedConfigDir)} && exec pal "$@"`)
+    lines.push(`cd ${quote(resolvedConfigDir)} && exec \${PAL_BIN:-pal} "$@"`)
     lines.push("")
 
     const scriptContent = lines.join("\n")

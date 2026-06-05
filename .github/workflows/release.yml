@@ -3,6 +3,7 @@ name: Build & Publish
 on:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -60,6 +61,7 @@ jobs:
           echo "${{ steps.version.outputs.version }}" > version.txt
 
       - name: Publish to packages.redhat.com
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           PULP_USERNAME: ${{ secrets.PULP_USERNAME }}
           PULP_PASSWORD: ${{ secrets.PULP_PASSWORD }}
@@ -94,7 +96,6 @@ jobs:
           }
 
           # Remove old latest/ content before uploading new versions
-          # Pulp keeps both old and new content at the same path otherwise
           remove_old_latest() {
             echo "Removing old latest/ content from repository..."
             OLD_HREFS=$(curl -s -u "${PULP_USERNAME}:${PULP_PASSWORD}" \
@@ -131,6 +132,7 @@ jobs:
           upload_file version.txt             "latest/version.txt"
 
       - name: Create Pulp publication
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           PULP_USERNAME: ${{ secrets.PULP_USERNAME }}
           PULP_PASSWORD: ${{ secrets.PULP_PASSWORD }}
@@ -154,14 +156,3 @@ jobs:
             sleep 2
           done
           echo "Published v${{ steps.version.outputs.version }}"
-
-      - name: Tag release
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${VERSION} already exists"
-          else
-            git tag "v${VERSION}"
-            git push origin "v${VERSION}"
-            echo "Tagged v${VERSION}"
-          fi
