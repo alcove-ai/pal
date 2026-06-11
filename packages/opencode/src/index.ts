@@ -136,7 +136,8 @@ const cli = yargs(args)
     // Periodic auto-update check (every 10 min, non-blocking)
     startPeriodicUpdateCheck()
 
-    const marker = path.join(process.cwd(), ".opencode", "data.db")
+    const configDir = process.env.PAL_CONFIG_DIR || process.cwd()
+    const marker = path.join(configDir, ".opencode", "data.db")
     const legacyMarker = path.join(Global.Path.data, "opencode.db")
     if (!(await Filesystem.exists(marker)) && !(await Filesystem.exists(legacyMarker))) {
       const tty = process.stderr.isTTY

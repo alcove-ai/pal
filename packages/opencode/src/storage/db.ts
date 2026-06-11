@@ -29,7 +29,8 @@ export const NotFoundError = NamedError.create(
 const log = Log.create({ service: "db" })
 
 export function getChannelPath() {
-  const dir = path.join(process.cwd(), ".opencode")
+  const configDir = process.env.PAL_CONFIG_DIR || process.cwd()
+  const dir = path.join(configDir, ".opencode")
   const palName = process.env.PAL_NAME
 
   // Determine the base filename depending on installation channel

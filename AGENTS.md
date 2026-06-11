@@ -50,7 +50,7 @@ team member's workstation.
 |-----|-----------|---------|
 | Needs Me | `routes/needs-me.tsx` | Items classified as needing human action (landing tab) |
 | Agent | `routes/home.tsx` | Chat interface (inherited from opencode) |
-| Domains | `routes/domains.tsx` | Domain health dashboard |
+| Radar | `routes/radar.tsx` | Manually-curated watchlist with LLM analysis |
 | Activity | `routes/activity.tsx` | Unified activity feed from all sources |
 | Settings | `routes/settings-pal.tsx` | PAL-specific configuration |
 
@@ -61,8 +61,9 @@ team member's workstation.
   Stores events in SQLite with 30-day retention.
 - **Needs Me** (`src/needs-me/`) -- Classifier that identifies items requiring
   the current user's attention (assigned issues, review requests, mentions).
-- **Domain Health** (`src/domain-health/`) -- Aggregates signals per domain
-  (bug counts, overdue items, stale PRs). Domains defined in `domains.json`.
+- **Radar** (`src/radar/`) -- Manually-curated URL watchlist with periodic
+  LLM analysis. URLs stored in `.opencode/radar.txt` (shared) and
+  `.opencode/radar.local.txt` (personal).
 - **Upstream Relevance** (`src/upstream-relevance/`) -- Two-layer classifier:
   Layer 1 is rule-based (keywords/labels/paths from `upstream.yaml`), Layer 2
   uses LLM for ambiguous events (with circuit breaker and daily budget cap).
@@ -98,7 +99,7 @@ failures (max 300s). Poll state is persisted so restarts resume cleanly.
 | `packages/plugin/` | Plugin framework |
 | `packages/sdk/` | SDK for external integrations |
 | `packages/script/` | Build and release scripts |
-| `domains.example.json` | Domain configuration template |
+| `Makefile` | Release tooling (`make release`) |
 | `upstream.yaml` | Upstream relevance rules |
 | `install.sh` | Installer script (downloads release binaries) |
 
@@ -138,9 +139,6 @@ failures (max 300s). Poll state is persisted so restarts resume cleanly.
 - **Do not run tests from root**: The root `package.json` has
   `"test": "echo 'do not run tests from root' && exit 1"`. Run tests from
   individual package directories instead.
-- **domains.json location**: The domain health system looks for
-  `.opencode/domains.json` in the project directory first, then falls back to
-  the global config directory. Copy `domains.example.json` to get started.
 - **Layer 2 budget**: The LLM-based upstream classifier has a daily soft cap
   (default 200 calls/day) and per-poll limit (default 20). Configured in
   `upstream.yaml` under `layer2:`.

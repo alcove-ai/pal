@@ -89,7 +89,7 @@ Needs Me is the landing tab. Navigate between tabs with `Shift+Left` / `Shift+Ri
 |-----|---------------|
 | **Needs Me** | Items needing your attention, with urgency scoring and recommendations |
 | **Agent** | Chat interface for AI agent sessions |
-| **Domains** | Health signals per team-owned domain |
+| **Radar** | Manually-curated watchlist of external URLs with LLM analysis |
 | **Activity** | Unified feed from Jira, GitHub, and GitLab |
 | **Settings** | PAL-specific configuration |
 
@@ -213,7 +213,7 @@ and review pull requests assigned to me.
 | `.opencode/roles/` | No (gitignored) | Per-agent role files (`roles/percy.md`, etc.) |
 | `.opencode/process.md` | Yes | Team workflow, phases, and gates |
 | `.opencode/pal.json` | Yes | Issue tracker connections (Jira, GitHub, GitLab) |
-| `.opencode/domains.json` | Yes | Domain health definitions (copy from `domains.example.json`) |
+| `.opencode/radar.txt` | Yes | Shared radar watchlist URLs |
 | `upstream.yaml` | Yes | Upstream relevance classification rules |
 
 ## Database Reset
