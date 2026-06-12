@@ -2,8 +2,6 @@ import { eq } from "drizzle-orm"
 import * as Log from "@opencode-ai/core/util/log"
 import { Database } from "@/storage/db"
 import { AgentResultTable } from "./pool.sql"
-import { get as getRole } from "@/config/role"
-import { load as loadProcessDoc } from "@/process/process-doc"
 import type { ActivityItem } from "@/needs-me/needs-me-logic"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
@@ -101,10 +99,6 @@ function loadResultsFromDb(): void {
 }
 
 function buildPrompt(item: ActivityItem): string {
-  const processDoc = loadProcessDoc() ?? "(no process document found)"
-  const role = getRole() ?? "(no role configured)"
-  const ts = new Date(item.last_event_ts).toISOString()
-
   // Build the related items section if cross-references exist
   let relatedSection = ""
   const links = linkedItems.get(item.source_id)
@@ -121,13 +115,9 @@ ${lines.join("\n")}
 `
   }
 
+  // Role and process doc are injected by the instruction system (instruction.ts ADDITIVE_FILES).
+  // Only include work item details and structured output instructions here.
   return `You are a background analysis agent. Your job is to analyze a work item and produce a recommendation. This is a background task — DO NOT ask the user any questions, DO NOT request confirmation, DO NOT offer to take actions. Just analyze and report.
-
-=== TEAM PROCESS ===
-${processDoc}
-
-=== USER'S ROLE ===
-${role}
 
 === WORK ITEM ===
 Title: ${item.title}
@@ -135,8 +125,8 @@ URL: ${item.url ?? "(none)"}
 Source: ${item.source_id}
 ${relatedSection}Steps:
 1. Fetch the full details of this work item using your tools (issue description, comments, labels, milestone, assignees).${links && links.length > 0 ? "\n   Also consider the related items listed above — fetch their details if needed for a complete picture." : ""}
-2. Determine the current state of this item in the team's process.
-3. Determine what action the user should take next given their role.
+2. Determine the current state of this item in the team's process (described in your system instructions).
+3. Determine what action the user should take next given their role (described in your system instructions).
 4. If applicable, draft what that action would look like (e.g., a comment draft, a spec outline).
 
 CRITICAL: Do NOT ask "shall I post this?" or "would you like me to...?" — just write your analysis and stop. The user will review your analysis later and decide what to do.

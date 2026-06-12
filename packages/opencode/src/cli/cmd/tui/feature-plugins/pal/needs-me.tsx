@@ -11,8 +11,6 @@ import { Identifier } from "@/id/id"
 import { TextAttributes } from "@opentui/core"
 import { registerTab } from "@tui/pal/tab-registry"
 import { recordTriageDecision } from "@/needs-me/decisions"
-import { get as getRole } from "@/config/role"
-import { load as loadProcessDoc } from "@/process/process-doc"
 import {
   buildDisplayRows,
   DONE_EVENT_TYPES,
@@ -282,19 +280,12 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
     registerSession(item, sessionID)
     props.api.route.navigate("session", { sessionID })
 
-    const processDoc = loadProcessDoc() ?? "No process document configured."
-    const role = getRole() ?? "No role configured."
-
+    // Role and process doc are in the session's system instructions (via instruction.ts).
     void props.api.client.session.prompt({
       sessionID,
       parts: [{
         type: "text" as const,
-        text: `Process context from your team's process document:
-${processDoc}
-
-Your role: ${role}
-
-Issue: ${item.title}
+        text: `Issue: ${item.title}
 URL: ${item.url ?? "none"}
 
 Help me take this action. Fetch the full issue details first.`,
