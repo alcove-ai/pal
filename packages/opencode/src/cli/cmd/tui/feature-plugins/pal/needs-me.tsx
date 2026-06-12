@@ -262,15 +262,7 @@ function NeedsMeView(props: { api: TuiPluginApi }) {
   void handleSnooze
 
   async function launchTriageSession(item: ActivityItem) {
-    // Check pool for existing session (running or completed)
-    const poolResult = getResult(item.source_id)
-    if (poolResult?.sessionId) {
-      registerSession(item, poolResult.sessionId)
-      props.api.route.navigate("session", { sessionID: poolResult.sessionId })
-      return
-    }
-
-    // No existing session — create one, register with pool, navigate
+    // Always create a new interactive session (never reuse the background analysis session)
     const result = await props.api.client.session.create({
       title: `Triage: ${item.title.slice(0, 50)}`,
     })
