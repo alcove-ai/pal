@@ -93,12 +93,20 @@ export interface ProcessConfig {
   exemptions?: ProcessExemption
 }
 
+// --- Mempalace ---
+
+export interface MempalaceConfig {
+  /** Map project prefix (e.g. "PULP") to a mempalace wing name */
+  wingMap?: Record<string, string>
+}
+
 // --- Top-level PAL config ---
 
 export interface PalConfig {
   activityFeed?: ActivityFeedConfig
   upstreamRelevance?: UpstreamRelevanceConfig
   process?: ProcessConfig
+  mempalace?: MempalaceConfig
 }
 
 const DEFAULT_CONFIG: PalConfig = {}
@@ -222,6 +230,19 @@ function loadFromDisk(configPath: string): PalConfig {
               labels: Array.isArray(p.exemptions.labels) ? p.exemptions.labels : undefined,
             }
           : undefined,
+      }
+    }
+
+    // Mempalace
+    if (config.mempalace && typeof config.mempalace === "object") {
+      const m = config.mempalace
+      result.mempalace = {}
+      if (m.wingMap && typeof m.wingMap === "object" && !Array.isArray(m.wingMap)) {
+        const wm: Record<string, string> = {}
+        for (const [k, v] of Object.entries(m.wingMap)) {
+          if (typeof v === "string") wm[k] = v
+        }
+        if (Object.keys(wm).length > 0) result.mempalace.wingMap = wm
       }
     }
 

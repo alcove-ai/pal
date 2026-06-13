@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm"
 import * as Log from "@opencode-ai/core/util/log"
 import { Database } from "@/storage/db"
 import { AgentResultTable } from "./pool.sql"
+import { searchRelated, writeAnalysis, resolveWing } from "@/sweep/mempalace"
 import type { ActivityItem } from "@/needs-me/needs-me-logic"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
@@ -72,6 +73,12 @@ const linkedSecondaryIds = new Set<string>()
 // Helpers
 // ---------------------------------------------------------------------------
 
+function extractProject(sourceId: string): string | undefined {
+  const jiraMatch = sourceId.match(/^([A-Z]+)-\d+$/)
+  if (jiraMatch) return jiraMatch[1]
+  return undefined
+}
+
 function rowToResult(row: typeof AgentResultTable.$inferSelect): AgentResult {
   return {
     sourceId: row.source_id,
@@ -98,7 +105,7 @@ function loadResultsFromDb(): void {
   }
 }
 
-function buildPrompt(item: ActivityItem): string {
+function buildPrompt(item: ActivityItem, mempalaceContext?: string): string {
   // Build the related items section if cross-references exist
   let relatedSection = ""
   const links = linkedItems.get(item.source_id)
@@ -115,6 +122,16 @@ ${lines.join("\n")}
 `
   }
 
+  // Build the mempalace context section if available
+  let mempalaceSection = ""
+  if (mempalaceContext && mempalaceContext.trim().length > 0) {
+    mempalaceSection = `
+=== RELATED CONTEXT FROM MEMORY ===
+${mempalaceContext.trim()}
+
+`
+  }
+
   // Role and process doc are injected by the instruction system (instruction.ts ADDITIVE_FILES).
   // Only include work item details and structured output instructions here.
   return `You are a background analysis agent. Your job is to analyze a work item and produce a recommendation. This is a background task — DO NOT ask the user any questions, DO NOT request confirmation, DO NOT offer to take actions. Just analyze and report.
@@ -123,7 +140,7 @@ ${lines.join("\n")}
 Title: ${item.title}
 URL: ${item.url ?? "(none)"}
 Source: ${item.source_id}
-${relatedSection}Steps:
+${relatedSection}${mempalaceSection}Steps:
 1. Fetch the full details of this work item using your tools (issue description, comments, labels, milestone, assignees).${links && links.length > 0 ? "\n   Also consider the related items listed above — fetch their details if needed for a complete picture." : ""}
 2. Determine the current state of this item in the team's process (described in your system instructions).
 3. Determine what action the user should take next given their role (described in your system instructions).
@@ -218,6 +235,14 @@ async function launchSession(item: ActivityItem): Promise<void> {
   if (!api) return
   const title = `Analysis: ${item.title.slice(0, 60)}`
 
+  // Enrich with mempalace context before building the prompt
+  let mempalaceContext = ""
+  try {
+    mempalaceContext = await searchRelated(item.title, extractProject(item.source_id))
+  } catch (err) {
+    log.info("mempalace search skipped", { sourceId: item.source_id, error: err })
+  }
+
   try {
     const createRes = await api.client.session.create({ title })
     const sessionId = createRes.data?.id
@@ -249,7 +274,7 @@ async function launchSession(item: ActivityItem): Promise<void> {
     try {
       await api.client.session.promptAsync({
         sessionID: sessionId,
-        parts: [{ type: "text" as const, text: buildPrompt(item) }],
+        parts: [{ type: "text" as const, text: buildPrompt(item, mempalaceContext) }],
       })
       log.info("prompt fired async", { sourceId: item.source_id, sessionId })
     } catch (err) {
@@ -383,6 +408,9 @@ async function checkRunning(): Promise<void> {
       running.delete(sourceId)
 
       log.info("analysis completed", { sourceId, sessionId: info.sessionId, summary: summary.slice(0, 80) })
+
+      // Write analysis to mempalace for future context enrichment
+      void writeAnalysis(sourceId, info.item.title, summary, recommendedAction, urgency, resolveWing(extractProject(sourceId)))
     } catch (err) {
       log.error("failed to read analysis response", { sourceId, sessionId: info.sessionId, error: err })
       markError(info.item, info.sessionId)
