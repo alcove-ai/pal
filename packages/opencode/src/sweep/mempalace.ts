@@ -85,7 +85,9 @@ export async function searchRelated(query: string, projectHint?: string): Promis
   log.info("searching mempalace", { query: query.slice(0, 100), wing: wing ?? "(all)" })
 
   try {
-    const args = ["search", query.slice(0, 200), "--results", "3"]
+    const sanitized = query.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200)
+    if (!sanitized) return ""
+    const args = ["search", sanitized, "--results", "3"]
     if (wing) {
       args.push("--wing", wing)
     }

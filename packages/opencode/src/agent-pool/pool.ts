@@ -233,14 +233,19 @@ function persistResult(result: AgentResult): void {
 
 async function launchSession(item: ActivityItem): Promise<void> {
   if (!api) return
+
+  // Reserve the slot immediately to prevent tick overlap from over-launching
+  const now = Date.now()
+  running.set(item.source_id, { sessionId: "", item, startedAt: now, userInitiated: false })
+
   const title = `Analysis: ${item.title.slice(0, 60)}`
 
   // Enrich with mempalace context before building the prompt
   let mempalaceContext = ""
   try {
     mempalaceContext = await searchRelated(item.title, extractProject(item.source_id))
-  } catch (err) {
-    log.info("mempalace search skipped", { sourceId: item.source_id, error: err })
+  } catch {
+    // mempalace not available or search failed — continue without context
   }
 
   try {
@@ -248,13 +253,13 @@ async function launchSession(item: ActivityItem): Promise<void> {
     const sessionId = createRes.data?.id
     if (!sessionId) {
       log.error("session.create returned no id", { sourceId: item.source_id })
+      running.delete(item.source_id)
       markError(item, null)
       return
     }
 
     log.info("session created for analysis", { sourceId: item.source_id, sessionId })
 
-    const now = Date.now()
     running.set(item.source_id, { sessionId, item, startedAt: now, userInitiated: false })
 
     const result: AgentResult = {
